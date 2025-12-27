@@ -1,24 +1,17 @@
-//
-//  ContentView.swift
-//  CineMy
-//
-//  Created by Prachi Sawan on 27/12/25.
-//
-
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        TabView {
+            SearchView()
+                .tabItem {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
+            
+            HistoryView()
+                .tabItem {
+                    Label("History", systemImage: "clock")
+                }
         }
-        .padding()
     }
-}
-
-#Preview {
-    ContentView()
 }
