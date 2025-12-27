@@ -48,6 +48,24 @@ struct MovieDetailView: View {
                     
                     // Action Buttons
                     HStack(spacing: 15) {
+                        // 0. My List Button
+                        Button(action: {
+                            ensureItemIsSaved()
+                            withAnimation {
+                                item.isWatchlist.toggle()
+                            }
+                        }) {
+                            VStack {
+                                Image(systemName: item.isWatchlist ? "bookmark.fill" : "bookmark")
+                                Text("List")
+                            }
+                            .frame(width: 60)
+                            .padding()
+                            .background(Color.purple.opacity(0.1))
+                            .foregroundStyle(.purple)
+                            .cornerRadius(12)
+                        }
+
                         // 1. Toggle "In Progress"
                         Button(action: {
                             ensureItemIsSaved()
@@ -66,11 +84,12 @@ struct MovieDetailView: View {
                             .cornerRadius(12)
                         }
                         
-                        // 2. Mark as Finished (Increments count, clears progress)
+                        // 2. Mark as Finished
                         Button(action: {
                             ensureItemIsSaved()
                             item.watchedCount += 1
                             item.isInProgress = false
+                            item.lastWatched = Date()
                         }) {
                             VStack {
                                 Image(systemName: "checkmark")

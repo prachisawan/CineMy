@@ -18,10 +18,12 @@ final class EliteItem {
     // Status & Metadata
     var watchedCount: Int = 0
     var isInProgress: Bool = false
+    var isWatchlist: Bool = false
+    var lastWatched: Date?
     var genre: String
     var platforms: [String]
     
-    init(id: String, tmdbId: Int, title: String, type: String, overview: String, releaseYear: String, director: String, cast: [String], rating: Double, language: String, posterPath: String? = nil, genre: String = "Drama", platforms: [String] = []) {
+    init(id: String, tmdbId: Int, title: String, type: String, overview: String, releaseYear: String, director: String, cast: [String], rating: Double, language: String, posterPath: String? = nil, genre: String = "Drama", platforms: [String] = [], isWatchlist: Bool = false, lastWatched: Date? = nil) {
         self.id = id
         self.tmdbId = tmdbId
         self.title = title
@@ -35,6 +37,8 @@ final class EliteItem {
         self.posterPath = posterPath
         self.genre = genre
         self.platforms = platforms
+        self.isWatchlist = isWatchlist
+        self.lastWatched = lastWatched
     }
 }
 

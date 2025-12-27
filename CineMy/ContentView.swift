@@ -8,6 +8,11 @@ struct ContentView: View {
                     Label("Search", systemImage: "magnifyingglass")
                 }
             
+            MyListView()
+                .tabItem {
+                    Label("My List", systemImage: "bookmark")
+                }
+            
             HistoryView()
                 .tabItem {
                     Label("History", systemImage: "clock")

@@ -12,31 +12,27 @@ class TMDBService {
     }
     
     // MARK: - Search Logic
+    @MainActor
     func searchMovies(query: String) async throws -> [EliteItem] {
         let cleanedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleanedQuery.isEmpty { return [] }
         
-        // 1. Analyze the sentence
         let analysis = analyzeQuery(cleanedQuery)
         
-        let hasCoreSubject = !analysis.remainingText.isEmpty && analysis.remainingText.count > 1
+        // DECISION ENGINE
+        let hasFilters = (analysis.genre != nil || analysis.language != nil || analysis.rating != nil || analysis.year != nil)
+        let text = analysis.remainingText
+        let isJustNumbers = Int(text) != nil
+        let isShort = text.count < 2
         
-        if hasCoreSubject {
-            // Text Search (e.g. "Iron Man", "Breaking Bad")
-            return try await fetchSearch(query: analysis.remainingText, year: analysis.year, type: analysis.type)
+        // Prefer Discover if we have filters and the text is junk/numbers
+        let useDiscover = hasFilters && (text.isEmpty || isJustNumbers || isShort)
+        
+        if !useDiscover && !text.isEmpty {
+            return try await fetchSearch(query: text, year: analysis.year, type: analysis.type)
         } else {
-            // Smart Filter (e.g. "Best Comedy 2023", "Korean Drama")
-            // If "multi" was selected but no text, default to Movie for now.
             let discoverType: MediaType = (analysis.type == .tv) ? .tv : .movie
-            
-            return try await fetchDiscover(
-                type: discoverType,
-                language: analysis.language,
-                genre: analysis.genre,
-                rating: analysis.rating,
-                year: analysis.year,
-                sortBy: analysis.sortBy
-            )
+            return try await fetchDiscover(type: discoverType, language: analysis.language, genre: analysis.genre, rating: analysis.rating, year: analysis.year, sortBy: analysis.sortBy)
         }
     }
     
@@ -52,10 +48,10 @@ class TMDBService {
     }
     
     private func analyzeQuery(_ text: String) -> QueryAnalysis {
-        var remaining = text.lowercased()
+        var remaining = convertNumberWordsToDigits(in: text.lowercased())
         var analysis = QueryAnalysis(remainingText: "")
         
-        // 1. Detect Type (Movie vs TV)
+        // 1. Detect Type
         if remaining.contains("series") || remaining.contains("show") || remaining.contains("tv") {
             analysis.type = .tv
         } else if remaining.contains("movie") || remaining.contains("film") {
@@ -68,7 +64,6 @@ class TMDBService {
             remaining = removeWords(from: remaining, words: ["best", "top", "highest", "ranking", "ranked"])
         } else if remaining.contains("new") || remaining.contains("latest") || remaining.contains("recent") {
             analysis.sortBy = "primary_release_date.desc"
-            analysis.year = Calendar.current.component(.year, from: Date())
             remaining = removeWords(from: remaining, words: ["new", "latest", "recent", "coming soon", "just dropped"])
         }
         
@@ -98,25 +93,44 @@ class TMDBService {
             remaining = remaining.replacingOccurrences(of: year.rawString, with: "")
         }
         
-        // 7. Cleanup
-        let fillerWords = [
-            "movies", "movie", "films", "film", "cinema",
-            "shows", "show", "series", "tv", "season", "episodes",
-            "releases", "release", "released", "dropped", "out now",
-            "rating", "ratings", "rated", "score", "scored", "imdb", "tmdb",
-            "above", "over", "under", "below", "more than", "less than",
-            "with", "in", "on", "about", "of", "for", "watch", "looking for", "find me"
-        ]
+        let fillerWords = ["movies", "movie", "films", "film", "cinema", "shows", "show", "series", "tv", "season", "episodes", "releases", "release", "released", "dropped", "out now", "rating", "ratings", "rated", "score", "scored", "imdb", "tmdb", "above", "over", "under", "below", "more than", "less than", "with", "in", "on", "about", "of", "for", "watch", "looking for", "find me", "and", "or"]
         
         remaining = removeWords(from: remaining, words: fillerWords)
-        analysis.remainingText = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        analysis.remainingText = remaining.trimmingCharacters(in: .whitespacesAndNewlines)
         return analysis
     }
     
     // MARK: - Detectors
+    private func convertNumberWordsToDigits(in text: String) -> String {
+        let mapping = [
+            "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+            "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"
+        ]
+        var newText = text
+        for (word, digit) in mapping {
+            newText = newText.replacingOccurrences(of: "\\b\(word)\\b", with: digit, options: .regularExpression)
+        }
+        return newText
+    }
+    
+    static func getGenreName(for id: Int) -> String {
+        let map = [
+            28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime", 99: "Documentary", 18: "Drama",
+            10751: "Family", 14: "Fantasy", 36: "History", 27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance",
+            878: "Sci-Fi", 10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western", 10759: "Action & Adventure",
+            10762: "Kids", 10763: "News", 10764: "Reality", 10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk", 10768: "War & Politics"
+        ]
+        return map[id] ?? "Drama"
+    }
+
     private func detectLanguage(in text: String) -> (name: String, code: String)? {
-        let map = ["malayalam": "ml", "hindi": "hi", "tamil": "ta", "telugu": "te", "kannada": "kn", "korean": "ko", "french": "fr", "english": "en", "spanish": "es", "japanese": "ja", "chinese": "zh", "italian": "it", "german": "de"]
+        let map = [
+            "malayalam": "ml", "hindi": "hi", "tamil": "ta", "telugu": "te", "kannada": "kn",
+            "marathi": "mr", "bengali": "bn", "gujarati": "gu", "punjabi": "pa",
+            "korean": "ko", "french": "fr", "english": "en", "spanish": "es", "japanese": "ja", 
+            "chinese": "zh", "italian": "it", "german": "de"
+        ]
         for (name, code) in map {
             if text.contains(name) { return (name, code) }
         }
@@ -124,16 +138,8 @@ class TMDBService {
     }
     
     private func detectGenre(in text: String, type: MediaType) -> (name: String, id: Int)? {
-        // TMDB Genre IDs
-        let movieMap = [
-            "action": 28, "comedy": 35, "drama": 18, "horror": 27, "romance": 10749, 
-            "sci-fi": 878, "scifi": 878, "thriller": 53, "animation": 16, "adventure": 12, "crime": 80, "family": 10751, "fantasy": 14
-        ]
-        let tvMap = [
-            "action": 10759, "adventure": 10759, "animation": 16, "comedy": 35, "crime": 80, "documentary": 99, 
-            "drama": 18, "family": 10751, "kids": 10762, "mystery": 9648, "news": 10763, "reality": 10764, 
-            "sci-fi": 10765, "scifi": 10765, "fantasy": 10765, "soap": 10766, "talk": 10767, "war": 10768, "politics": 10768
-        ]
+        let movieMap = ["action": 28, "comedy": 35, "drama": 18, "horror": 27, "romance": 10749, "sci-fi": 878, "scifi": 878, "thriller": 53, "animation": 16, "adventure": 12, "crime": 80, "family": 10751, "fantasy": 14]
+        let tvMap = ["action": 10759, "adventure": 10759, "animation": 16, "comedy": 35, "crime": 80, "documentary": 99, "drama": 18, "family": 10751, "kids": 10762, "mystery": 9648, "news": 10763, "reality": 10764, "sci-fi": 10765, "scifi": 10765, "fantasy": 10765, "soap": 10766, "talk": 10767, "war": 10768, "politics": 10768]
         let map = (type == .tv) ? tvMap : movieMap
         for (name, id) in map {
             if text.contains(name) { return (name, id) }
@@ -141,16 +147,40 @@ class TMDBService {
         return nil
     }
     
+    // UPDATED: Now handles percentages (80%) by normalizing to 0-10 scale
     private func detectRating(in text: String) -> (value: Double, rawString: String)? {
-        let pattern = "(?:rating|above|over|>)\\s*(\\d+(\\.\\d+)?)"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let prefixPattern = "(?:rating|rated|score|imdb|tmdb|above|over|>|min)\\s*(\\d+(\\.\\d+)?)"
+        let suffixPattern = "(\\d+(\\.\\d+)?)\\s*(?:\\+|and above|or higher|up|stars|%)" // Added % support
+        
+        if let match = findMatch(pattern: prefixPattern, in: text, captureIndex: 1) {
+            return normalizeRating(match)
+        }
+        if let match = findMatch(pattern: suffixPattern, in: text, captureIndex: 1) {
+            return normalizeRating(match)
+        }
+        return nil
+    }
+    
+    private func normalizeRating(_ match: (Double, String)) -> (Double, String) {
+        var value = match.0
+        // Fix: User might enter "80%" or "85" thinking of Rotten Tomatoes or Metacritic style
+        // TMDB uses 0-10 scale. If value is > 10, assume it's 0-100 and normalize.
+        if value > 10.0 {
+            value = value / 10.0
+        }
+        return (value, match.1)
+    }
+    
+    private func findMatch(pattern: String, in text: String, captureIndex: Int) -> (Double, String)? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
         let nsString = text as NSString
         let results = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
-        
         if let match = results.first {
-            let raw = nsString.substring(with: match.range)
-            let numberPart = raw.filter { "0123456789.".contains($0) }
-            if let val = Double(numberPart) { return (val, raw) }
+            let fullMatchString = nsString.substring(with: match.range)
+            if match.numberOfRanges > captureIndex {
+                let numberString = nsString.substring(with: match.range(at: captureIndex))
+                if let val = Double(numberString) { return (val, fullMatchString) }
+            }
         }
         return nil
     }
@@ -160,7 +190,6 @@ class TMDBService {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let nsString = text as NSString
         let results = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
-        
         if let match = results.first {
             let raw = nsString.substring(with: match.range)
             if let val = Int(raw) { return (val, raw) }
@@ -176,138 +205,182 @@ class TMDBService {
         return newText
     }
     
-    // MARK: - API Calls
+    // MARK: - API Calls (PAGINATED & CONCURRENCY SAFE)
     
+    @MainActor
     private func fetchSearch(query: String, year: Int?, type: MediaType) async throws -> [EliteItem] {
-        let endpoint: String
-        switch type {
-        case .movie: endpoint = "search/movie"
-        case .tv: endpoint = "search/tv"
-        case .multi: endpoint = "search/multi"
-        }
-        
-        var components = URLComponents(string: "\(baseURL)/\(endpoint)")!
-        var queryItems = [
-            URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "query", value: query),
-            URLQueryItem(name: "include_adult", value: "false"),
-            URLQueryItem(name: "language", value: "en-US"),
-            URLQueryItem(name: "page", value: "1")
-        ]
-        
-        if let year = year {
-            if type == .movie {
-                queryItems.append(URLQueryItem(name: "year", value: String(year)))
-            } else if type == .tv {
-                queryItems.append(URLQueryItem(name: "first_air_date_year", value: String(year)))
+        // Fetch 5 pages for Search (100 results max)
+        var allResults: [TMDBResult] = [] // Store as DTOs first
+        for page in 1...5 {
+            let endpoint: String
+            switch type {
+            case .movie: endpoint = "search/movie"
+            case .tv: endpoint = "search/tv"
+            case .multi: endpoint = "search/multi"
+            }
+            
+            var components = URLComponents(string: "\(baseURL)/\(endpoint)")!
+            var queryItems = [
+                URLQueryItem(name: "api_key", value: apiKey),
+                URLQueryItem(name: "query", value: query),
+                URLQueryItem(name: "include_adult", value: "false"),
+                URLQueryItem(name: "language", value: "en-US"),
+                URLQueryItem(name: "page", value: String(page))
+            ]
+            
+            if let year = year {
+                if type == .movie { queryItems.append(URLQueryItem(name: "year", value: String(year))) }
+                else if type == .tv { queryItems.append(URLQueryItem(name: "first_air_date_year", value: String(year))) }
+            }
+            
+            components.queryItems = queryItems
+            guard let url = components.url else { continue }
+            
+            if let (data, _) = try? await URLSession.shared.data(from: url),
+               let response = try? JSONDecoder().decode(TMDBListResponse.self, from: data) {
+                allResults.append(contentsOf: response.results)
             }
         }
         
-        components.queryItems = queryItems
-        guard let url = components.url else { throw URLError(.badURL) }
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
-        let response = try JSONDecoder().decode(TMDBListResponse.self, from: data)
-        
-        // STRICT FILTERING (Client-Side)
-        // 1. Minimum Rating: 6.0
-        // 2. Minimum Votes: 500
-        return response.results
-            .filter { $0.media_type != "person" }
-            .filter { ($0.vote_average ?? 0) >= 6.0 }
-            .filter { ($0.vote_count ?? 0) >= 500 }
-            .map { $0.toDomainModel(fallbackType: type) }
+        return convertToDomainAndFilter(results: allResults, fallbackType: type)
     }
     
+    @MainActor
     private func fetchDiscover(type: MediaType, language: String?, genre: Int?, rating: Double?, year: Int?, sortBy: String) async throws -> [EliteItem] {
-        let endpoint = (type == .movie) ? "discover/movie" : "discover/tv"
-        var components = URLComponents(string: "\(baseURL)/\(endpoint)")!
-        
-        // STRICT FILTERING (API-Side)
-        // Ensure strictly >= 6.0, unless user requested higher (e.g. 8.0)
-        let minRating = max(6.0, rating ?? 0.0)
-        
-        var queryItems = [
-            URLQueryItem(name: "api_key", value: apiKey),
-            URLQueryItem(name: "include_adult", value: "false"),
-            URLQueryItem(name: "include_video", value: "false"),
-            URLQueryItem(name: "language", value: "en-US"),
-            URLQueryItem(name: "page", value: "1"),
-            URLQueryItem(name: "sort_by", value: sortBy),
+        // Fetch up to 20 pages (400 results) to ensure we get "all" relevant items for strict filters
+        // Return TMDBResult (struct) instead of EliteItem (class) to avoid Sendable warnings
+        let results = await withTaskGroup(of: [TMDBResult].self) { group in
+            for page in 1...20 {
+                group.addTask {
+                    let endpoint = (type == .movie) ? "discover/movie" : "discover/tv"
+                    var components = URLComponents(string: "\(self.baseURL)/\(endpoint)")!
+                    
+                    // TMDB API uses a 0-10 scale for 'vote_average'.
+                    // Users might input:
+                    // - "8.5" (IMDb style) -> we send 8.5
+                    // - "85" or "85%" (Percentage) -> detector normalizes to 8.5
+                    // - "8" -> we send 8.0
+                    // Default baseline is 6.0 if no specific rating is requested.
+                    let minRating = max(6.0, rating ?? 0.0)
+                    
+                    // Dynamic Vote Threshold
+                    // - Regional content (Indian languages) often has lower vote counts on TMDB despite being high quality/popular.
+                    // - Global/English content needs a higher threshold to filter spam/noise.
+                    let indianLanguages = ["ml", "ta", "te", "kn", "hi", "mr", "bn", "gu", "pa"] 
+                    let isRegionalSearch = indianLanguages.contains(language ?? "")
+                    let voteThreshold = isRegionalSearch ? "10" : "200"
+                    
+                    var queryItems = [
+                        URLQueryItem(name: "api_key", value: self.apiKey),
+                        URLQueryItem(name: "include_adult", value: "false"),
+                        URLQueryItem(name: "include_video", value: "false"),
+                        URLQueryItem(name: "language", value: "en-US"),
+                        URLQueryItem(name: "page", value: String(page)),
+                        URLQueryItem(name: "sort_by", value: sortBy),
+                        URLQueryItem(name: "vote_average.gte", value: String(minRating)),
+                        URLQueryItem(name: "vote_count.gte", value: voteThreshold)
+                    ]
+                    
+                    if let language = language { queryItems.append(URLQueryItem(name: "with_original_language", value: language)) }
+                    if let genre = genre { queryItems.append(URLQueryItem(name: "with_genres", value: String(genre))) }
+                    if let year = year {
+                         let param = (type == .movie) ? "primary_release_year" : "first_air_date_year"
+                        queryItems.append(URLQueryItem(name: param, value: String(year)))
+                    }
+                    
+                    components.queryItems = queryItems
+                    guard let url = components.url else { return [] }
+                    
+                    if let (data, _) = try? await URLSession.shared.data(from: url),
+                       let response = try? JSONDecoder().decode(TMDBListResponse.self, from: data) {
+                        return response.results
+                    }
+                    return []
+                }
+            }
             
-            // Quality Filters
-            URLQueryItem(name: "vote_average.gte", value: String(minRating)),
-            URLQueryItem(name: "vote_count.gte", value: "500") // 500+ Votes
-        ]
-        
-        if let language = language {
-             queryItems.append(URLQueryItem(name: "with_original_language", value: language))
+            var collected: [TMDBResult] = []
+            for await pageResults in group {
+                collected.append(contentsOf: pageResults)
+            }
+            return collected
         }
         
-        if let genre = genre {
-            queryItems.append(URLQueryItem(name: "with_genres", value: String(genre)))
+        return convertToDomainAndFilter(results: results, fallbackType: type)
+    }
+    
+    // Helper to convert DTOs to Domain Models
+    private func convertToDomainAndFilter(results: [TMDBResult], fallbackType: MediaType) -> [EliteItem] {
+        let items = results.map { dto -> EliteItem in
+            let displayTitle = dto.title ?? dto.name ?? "Unknown"
+            let date = dto.release_date ?? dto.first_air_date
+            let year = String(date?.prefix(4) ?? "Unknown")
+            
+            // DEBUG LOG: Check incoming API data
+            print("[\(displayTitle)] Vote Average: \(dto.vote_average ?? -1), ID: \(dto.id)")
+            
+            let resolvedType: String
+            if let mt = dto.media_type {
+                resolvedType = mt
+            } else {
+                if fallbackType == .multi {
+                    resolvedType = "movie"
+                } else {
+                    resolvedType = fallbackType.rawValue
+                }
+            }
+            
+            var genreName = "Drama"
+            if let ids = dto.genre_ids, let firstId = ids.first {
+                genreName = TMDBService.getGenreName(for: firstId)
+            }
+            
+            return EliteItem(
+                id: "\(resolvedType)-\(dto.id)",
+                tmdbId: dto.id,
+                title: displayTitle,
+                type: resolvedType,
+                overview: dto.overview ?? "",
+                releaseYear: year,
+                director: "Unknown",
+                cast: [],
+                // Audit Check: We are using 'vote_average' from TMDB and mapping it to 'rating'
+                rating: dto.vote_average ?? 0.0,
+                language: dto.original_language ?? "en",
+                posterPath: dto.poster_path,
+                genre: genreName
+            )
         }
         
-        if let year = year {
-             let param = (type == .movie) ? "primary_release_year" : "first_air_date_year"
-            queryItems.append(URLQueryItem(name: param, value: String(year)))
-        }
+        // Filter Duplicates
+        let uniqueItems = Array(Dictionary(grouping: items, by: { $0.id }).values.compactMap { $0.first })
         
-        components.queryItems = queryItems
-        guard let url = components.url else { throw URLError(.badURL) }
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
-        let response = try JSONDecoder().decode(TMDBListResponse.self, from: data)
-        return response.results.map { $0.toDomainModel(fallbackType: type) }
+        // Apply Quality Filters
+        return uniqueItems
+            .filter { $0.type != "person" }
+            // Audit Check: Ensure we are filtering based on the mapped TMDB vote_average
+            .filter { $0.rating >= 6.0 }
+            .sorted { $0.rating > $1.rating }
     }
 }
 
-// MARK: - Internal Response Models
-fileprivate struct TMDBListResponse: Decodable {
+// MARK: - Internal Response Models (Decoupled & Sendable)
+fileprivate struct TMDBListResponse: Decodable, Sendable {
     let results: [TMDBResult]
 }
 
-fileprivate struct TMDBResult: Decodable {
+// Audit Check: TMDBResult uses 'vote_average', NOT 'imdb_rating'
+fileprivate struct TMDBResult: Decodable, Sendable {
     let id: Int
     let title: String?
     let name: String?
     let overview: String?
     let release_date: String?
     let first_air_date: String?
-    let vote_average: Double?
-    let vote_count: Int? // Added for quality filtering
+    let vote_average: Double? // This is the correct field from TMDB
+    let vote_count: Int?
     let poster_path: String?
     let original_language: String?
     let media_type: String?
-    
-    func toDomainModel(fallbackType: TMDBService.MediaType) -> EliteItem {
-        let displayTitle = title ?? name ?? "Unknown"
-        let date = release_date ?? first_air_date
-        let year = String(date?.prefix(4) ?? "Unknown")
-        
-        let resolvedType: String
-        if let mt = media_type {
-            resolvedType = mt
-        } else {
-            if fallbackType == .multi {
-                resolvedType = "movie"
-            } else {
-                resolvedType = fallbackType.rawValue
-            }
-        }
-        
-        return EliteItem(
-            id: "\(resolvedType)-\(id)",
-            tmdbId: id,
-            title: displayTitle,
-            type: resolvedType,
-            overview: overview ?? "",
-            releaseYear: year,
-            director: "Unknown", 
-            cast: [],
-            rating: vote_average ?? 0.0,
-            language: original_language ?? "en",
-            posterPath: poster_path
-        )
-    }
+    let genre_ids: [Int]?
 }

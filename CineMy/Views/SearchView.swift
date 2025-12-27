@@ -49,6 +49,19 @@ struct SearchView: View {
                 }
                 .padding(.bottom, 10)
                 
+                // Result Count Indicator
+                if !searchResults.isEmpty {
+                    HStack {
+                        Text("\(searchResults.count) results found")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 5)
+                    .transition(.opacity)
+                }
+                
                 // Results Area
                 if isSearching {
                     ProgressView("Searching TMDB...")
@@ -101,15 +114,18 @@ struct SearchView: View {
     
     // Sync API results with local DB to show correct status (Watched/In Progress)
     private func syncWithDatabase(_ items: [EliteItem]) -> [EliteItem] {
-        return items.map { item in
+        let syncedItems = items.map { item -> EliteItem in
             let id = item.id
-            // Try to find in DB
             let descriptor = FetchDescriptor<EliteItem>(predicate: #Predicate { $0.id == id })
             if let existing = try? modelContext.fetch(descriptor).first {
                 return existing
             }
             return item
         }
+        
+        // Filter out items that are already watched (as requested by user)
+        // Keep items that are new OR in-progress. Hide finished ones.
+        return syncedItems.filter { $0.watchedCount == 0 }
     }
 }
 
@@ -138,10 +154,21 @@ struct SmartSearchCard: View {
             }
             
             VStack(alignment: .leading, spacing: 8) {
-                Text(item.title)
-                    .font(.headline)
-                    .bold()
-                    .lineLimit(2)
+                HStack {
+                    Text(item.title)
+                        .font(.headline)
+                        .bold()
+                        .lineLimit(2)
+                    
+                    Spacer()
+                    
+                    // NEW: My List Badge Logic (Minimal Dot)
+                    if item.isWatchlist {
+                         Image(systemName: "bookmark.fill")
+                            .foregroundStyle(.purple)
+                            .font(.caption)
+                    }
+                }
                 
                 Text(item.releaseYear)
                     .font(.caption)
@@ -162,17 +189,6 @@ struct SmartSearchCard: View {
                     Text(String(format: "%.1f", item.rating))
                         .font(.caption)
                         .bold()
-                }
-                
-                // Show "Watched" status if synced
-                if item.watchedCount > 0 {
-                    Text("Watched")
-                        .font(.caption2)
-                        .bold()
-                        .foregroundStyle(.green)
-                        .padding(4)
-                        .background(Color.green.opacity(0.1))
-                        .cornerRadius(4)
                 }
             }
             Spacer()
