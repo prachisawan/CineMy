@@ -78,6 +78,7 @@ struct MyListView: View {
 struct MyListCard: View {
     let item: EliteItem
     let isWatching: Bool
+    @State private var isCompleting = false
     
     var body: some View {
         ZStack {
@@ -128,12 +129,41 @@ struct MyListCard: View {
                             .padding(.top, 4)
                     }
                 }
+                
                 Spacer()
                 
-                // Optional: Status icon
+                // Optional: Complete Button
                 if isWatching {
-                    Image(systemName: "play.circle")
-                        .foregroundStyle(.orange)
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isCompleting = true
+                        }
+                        
+                        // Delay to show success state
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            withAnimation {
+                                item.isInProgress = false
+                                item.watchedCount += 1
+                                item.lastWatched = Date()
+                            }
+                            Task {
+                                await FriendService.shared.syncMyHistory(watchedIDs: [item.tmdbId])
+                            }
+                        }
+                    }) {
+                        Text("Watched?")
+                           .font(.caption.bold())
+                           .padding(.horizontal, 12)
+                           .padding(.vertical, 6)
+                           .background(isCompleting ? Color.green : Color.clear)
+                           .foregroundStyle(isCompleting ? .white : .green)
+                           .clipShape(Capsule())
+                           .overlay(
+                               Capsule().stroke(Color.green, lineWidth: 1.5)
+                           )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(isCompleting)
                 }
              }
              .padding(.vertical, 8) // Increased vertical padding

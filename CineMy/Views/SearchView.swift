@@ -86,8 +86,8 @@ struct SearchView: View {
                         if !selectedFriendCodes.isEmpty {
                             Spacer()
                             Text("Filtering for \(selectedFriendCodes.count) friends")
-                                .font(.caption)
-                                .foregroundStyle(.blue)
+                            .font(.caption)
+                            .foregroundStyle(.blue)
                         } else {
                             Spacer()
                         }
@@ -301,8 +301,8 @@ struct SmartSearchCard: View {
                     
                     // NEW: My List Badge Logic (Minimal Dot)
                     if item.isWatchlist {
-                         Image(systemName: "bookmark.fill")
-                            .foregroundStyle(.purple)
+                         Image(systemName: "heart.fill")
+                            .foregroundStyle(.pink) // Changed from purple bookmark to pink heart
                             .font(.caption)
                     }
                 }

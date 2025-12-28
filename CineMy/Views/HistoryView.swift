@@ -3,11 +3,13 @@ import SwiftData
 
 struct HistoryView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(filter: #Predicate<EliteItem> { $0.watchedCount > 0 }, sort: \.title)
+    @Query(filter: #Predicate<EliteItem> { $0.watchedCount > 0 }, sort: \.lastWatched, order: .reverse)
     private var allWatchedItems: [EliteItem]
     
     // Toggle: 0 = Movies, 1 = TV Shows
     @State private var typeFilter: Int = 0
+    // Edit Mode State
+    @State private var isEditing = false
     
     // Filter items based on selection
     var filteredItems: [EliteItem] {
@@ -31,39 +33,50 @@ struct HistoryView: View {
                     ContentUnavailableView(
                         "No History",
                         systemImage: "clock",
-                        description: Text("Mark \(typeFilter == 0 ? "movies" : "shows") as watched.")
+                        description: Text("No history yet. Start watching!")
                     )
                     .padding()
                     Spacer()
                 } else {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            // 2. Dashboard Section
+                    List {
+                        // 2. Dashboard Section
+                        Section {
                             DashboardView(items: filteredItems)
-                            
-                            // 3. The List
-                            VStack(alignment: .leading, spacing: 10) {
+                                .listRowInsets(EdgeInsets()) // Full width
+                                .listRowBackground(Color.clear)
+                        }
+                        
+                        // 3. The List
+                        Section(header: 
+                            HStack {
                                 Text("Recent History")
-                                    .font(.headline)
-                                    .padding(.horizontal)
-                                
-                                LazyVStack(spacing: 0) {
-                                    ForEach(filteredItems) { item in
-                                        HistoryRow(item: item, onRemove: {
-                                            removeFromHistory(item)
-                                        }, onToggleList: {
-                                            addToWatchlist(item)
-                                        })
-                                        Divider().padding(.leading)
+                                Spacer()
+                                Button(isEditing ? "Done" : "Edit") {
+                                    withAnimation {
+                                        isEditing.toggle()
                                     }
                                 }
-                                .background(Color(uiColor: .secondarySystemGroupedBackground))
-                                .cornerRadius(12)
-                                .padding(.horizontal)
+                                .font(.subheadline)
+                                .foregroundStyle(.blue)
                             }
+                        ) {
+                            ForEach(filteredItems) { item in
+                                ZStack {
+                                    // Remove the custom red delete button to prevent double icons
+                                    // System edit mode will handle the delete icon automatically
+                                    HistoryRow(item: item)
+                                    NavigationLink(destination: MovieDetailView(item: item)) { EmptyView() }.opacity(0)
+                                }
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            }
+                            .onDelete(perform: deleteItems)
                         }
                     }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                     .background(Color(uiColor: .systemGroupedBackground))
+                    .environment(\.editMode, .constant(isEditing ? .active : .inactive))
                 }
             }
             .navigationTitle("History")
@@ -71,18 +84,15 @@ struct HistoryView: View {
         }
     }
     
-    private func removeFromHistory(_ item: EliteItem) {
+    private func deleteItems(offsets: IndexSet) {
         withAnimation {
-            item.watchedCount = 0
-            item.lastWatched = nil
+            for index in offsets {
+                let item = filteredItems[index]
+                item.watchedCount = 0
+                item.lastWatched = nil
+            }
         }
         Task { await syncChanges() }
-    }
-    
-    private func addToWatchlist(_ item: EliteItem) {
-        withAnimation {
-            item.isWatchlist.toggle()
-        }
     }
     
     @MainActor
@@ -166,6 +176,7 @@ struct DashboardView: View {
             .cornerRadius(12)
         }
         .padding(.horizontal)
+        .padding(.bottom, 10)
     }
 }
 
@@ -197,8 +208,6 @@ struct StatCard: View {
 
 struct HistoryRow: View {
     @Bindable var item: EliteItem
-    var onRemove: () -> Void
-    var onToggleList: () -> Void
     
     var body: some View {
         HStack(spacing: 15) {
@@ -232,19 +241,24 @@ struct HistoryRow: View {
                         .foregroundStyle(.blue)
                         .cornerRadius(4)
                 }
+                
+                // NEW: Watched Date Label
+                if let date = item.lastWatched {
+                    Text("Watched on \(date.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             
             Spacer()
             
-            // Delete (Trash) Button
-            Button(action: onRemove) {
-                Image(systemName: "trash")
-                    .font(.title3)
-                    .foregroundColor(.red.opacity(0.8))
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(PlainButtonStyle())
+            // Interaction hint (chevron)
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .padding()
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .cornerRadius(12)
     }
 }
