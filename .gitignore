@@ -1,0 +1,26 @@
+# MacOS
+.DS_Store
+
+# Xcode
+build/
+*.navx
+*.user
+*.start
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Secrets
+GoogleService-Info.plist
