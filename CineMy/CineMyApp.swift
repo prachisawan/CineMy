@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseCore // Import Firebase
 
 @main
 struct CineMyApp: App {
@@ -7,8 +8,11 @@ struct CineMyApp: App {
     let container: ModelContainer
 
     init() {
+        // Initialize Firebase
+        FirebaseApp.configure()
+        
         do {
-            container = try ModelContainer(for: EliteItem.self)
+            container = try ModelContainer(for: EliteItem.self, Friend.self)
             
             // 2. Check and Seed Data
             try seedDataIfNeeded(context: container.mainContext)

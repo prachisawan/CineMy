@@ -2,22 +2,29 @@ import SwiftUI
 import SwiftData
 
 struct HistoryView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<EliteItem> { $0.watchedCount > 0 }, sort: \.title)
     private var allWatchedItems: [EliteItem]
     
     // Toggle: 0 = Movies, 1 = TV Shows
     @State private var typeFilter: Int = 0
     
+    // Filter items based on selection
+    var filteredItems: [EliteItem] {
+        let typeString = (typeFilter == 0) ? "movie" : "tv"
+        return allWatchedItems.filter { $0.type == typeString }
+    }
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // 1. Type Toggle
-                Picker("Type", selection: $typeFilter) {
-                    Text("Movies").tag(0)
-                    Text("TV Shows").tag(1)
-                }
-                .pickerStyle(.segmented)
+                // 1. Type Toggle (Custom Elite Segmented Control)
+                EliteSegmentedControl(
+                    options: ["Movies", "TV Shows"],
+                    selectedIndex: $typeFilter
+                )
                 .padding()
+                .padding(.bottom, 5) // Extra spacing below
                 
                 if filteredItems.isEmpty {
                     Spacer()
@@ -26,6 +33,7 @@ struct HistoryView: View {
                         systemImage: "clock",
                         description: Text("Mark \(typeFilter == 0 ? "movies" : "shows") as watched.")
                     )
+                    .padding()
                     Spacer()
                 } else {
                     ScrollView {
@@ -41,7 +49,11 @@ struct HistoryView: View {
                                 
                                 LazyVStack(spacing: 0) {
                                     ForEach(filteredItems) { item in
-                                        HistoryRow(item: item)
+                                        HistoryRow(item: item, onRemove: {
+                                            removeFromHistory(item)
+                                        }, onToggleList: {
+                                            addToWatchlist(item)
+                                        })
                                         Divider().padding(.leading)
                                     }
                                 }
@@ -59,10 +71,27 @@ struct HistoryView: View {
         }
     }
     
-    // Filter items based on selection
-    var filteredItems: [EliteItem] {
-        let typeString = (typeFilter == 0) ? "movie" : "tv"
-        return allWatchedItems.filter { $0.type == typeString }
+    private func removeFromHistory(_ item: EliteItem) {
+        withAnimation {
+            item.watchedCount = 0
+            item.lastWatched = nil
+        }
+        Task { await syncChanges() }
+    }
+    
+    private func addToWatchlist(_ item: EliteItem) {
+        withAnimation {
+            item.isWatchlist.toggle()
+        }
+    }
+    
+    @MainActor
+    private func syncChanges() async {
+        let descriptor = FetchDescriptor<EliteItem>(predicate: #Predicate { $0.watchedCount > 0 })
+        if let watchedItems = try? modelContext.fetch(descriptor) {
+            let ids = watchedItems.map { $0.tmdbId }
+            await FriendService.shared.syncMyHistory(watchedIDs: ids)
+        }
     }
 }
 
@@ -167,7 +196,9 @@ struct StatCard: View {
 }
 
 struct HistoryRow: View {
-    let item: EliteItem
+    @Bindable var item: EliteItem
+    var onRemove: () -> Void
+    var onToggleList: () -> Void
     
     var body: some View {
         HStack(spacing: 15) {
@@ -186,9 +217,11 @@ struct HistoryRow: View {
                     .cornerRadius(8)
             }
             
+            // Text Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
                     .font(.headline)
+                    .lineLimit(1)
                 
                 HStack {
                      Text(item.genre)
@@ -198,13 +231,19 @@ struct HistoryRow: View {
                         .background(Color.blue.opacity(0.1))
                         .foregroundStyle(.blue)
                         .cornerRadius(4)
-                    
-                    Text("Watched: \(item.watchedCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
+            
             Spacer()
+            
+            // Delete (Trash) Button
+            Button(action: onRemove) {
+                Image(systemName: "trash")
+                    .font(.title3)
+                    .foregroundColor(.red.opacity(0.8))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding()
     }

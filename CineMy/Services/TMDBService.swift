@@ -242,7 +242,7 @@ class TMDBService {
             }
         }
         
-        return convertToDomainAndFilter(results: allResults, fallbackType: type)
+        return convertToDomainAndFilter(results: allResults, fallbackType: type, searchQuery: query)
     }
     
     @MainActor
@@ -284,7 +284,7 @@ class TMDBService {
                     if let language = language { queryItems.append(URLQueryItem(name: "with_original_language", value: language)) }
                     if let genre = genre { queryItems.append(URLQueryItem(name: "with_genres", value: String(genre))) }
                     if let year = year {
-                         let param = (type == .movie) ? "primary_release_year" : "first_air_date_year"
+                        let param = (type == .movie) ? "primary_release_year" : "first_air_date_year"
                         queryItems.append(URLQueryItem(name: param, value: String(year)))
                     }
                     
@@ -308,16 +308,65 @@ class TMDBService {
         
         return convertToDomainAndFilter(results: results, fallbackType: type)
     }
-    
+
     // Helper to convert DTOs to Domain Models
-    private func convertToDomainAndFilter(results: [TMDBResult], fallbackType: MediaType) -> [EliteItem] {
-        let items = results.map { dto -> EliteItem in
+    private func convertToDomainAndFilter(results: [TMDBResult], fallbackType: MediaType, searchQuery: String? = nil) -> [EliteItem] {
+        // 1. Deduplicate DTOs first
+        let uniqueResults = Array(Dictionary(grouping: results, by: { $0.id }).values.compactMap { $0.first })
+        
+        // 2. Sort Logic
+        let sortedResults: [TMDBResult]
+        
+        if let query = searchQuery?.lowercased() {
+             // SEARCH MODE: Relevance Priority
+             // 1. First, apply the strict rating filter requested by user
+             let qualityResults = uniqueResults.filter { ($0.vote_average ?? 0) >= 6.0 }
+             
+             sortedResults = qualityResults.sorted { first, second in
+                 let title1 = (first.title ?? first.name ?? "").lowercased()
+                 let title2 = (second.title ?? second.name ?? "").lowercased()
+                 let votes1 = first.vote_count ?? 0
+                 let votes2 = second.vote_count ?? 0
+                 
+                 // Priority 1: Exact Match wins
+                 if title1 == query && title2 != query { return true }
+                 if title2 == query && title1 != query { return false }
+                 
+                 // Priority 2: Starts With wins
+                 let starts1 = title1.hasPrefix(query)
+                 let starts2 = title2.hasPrefix(query)
+                 if starts1 && !starts2 { return true }
+                 if starts2 && !starts1 { return false }
+                 
+                 // Priority 3: Vote Count (Popularity) wins for tie-breaking
+                 if votes1 != votes2 {
+                     return votes1 > votes2
+                 }
+                 
+                 // Fallback: Rating
+                 return (first.vote_average ?? 0) > (second.vote_average ?? 0)
+             }
+        } else {
+            // DISCOVER MODE: Rating Priority (High Quality)
+            sortedResults = uniqueResults
+                .filter { ($0.vote_average ?? 0) >= 6.0 } // Strict 6.0+ for Discover
+                .sorted { ($0.vote_average ?? 0) > ($1.vote_average ?? 0) }
+        }
+
+        // 3. Map to Domain
+        return sortedResults.compactMap { dto -> EliteItem? in
             let displayTitle = dto.title ?? dto.name ?? "Unknown"
+            // Filter out Persons if any slipped through
+            if dto.media_type == "person" { return nil }
+            
+            // Search Mode Validity Check:
+            if searchQuery != nil {
+                // For search, basic validity: must have votes or description
+                if (dto.vote_count ?? 0) == 0 && (dto.overview ?? "").isEmpty { return nil }
+            }
+            
             let date = dto.release_date ?? dto.first_air_date
             let year = String(date?.prefix(4) ?? "Unknown")
-            
-            // DEBUG LOG: Check incoming API data
-            print("[\(displayTitle)] Vote Average: \(dto.vote_average ?? -1), ID: \(dto.id)")
             
             let resolvedType: String
             if let mt = dto.media_type {
@@ -344,43 +393,11 @@ class TMDBService {
                 releaseYear: year,
                 director: "Unknown",
                 cast: [],
-                // Audit Check: We are using 'vote_average' from TMDB and mapping it to 'rating'
                 rating: dto.vote_average ?? 0.0,
                 language: dto.original_language ?? "en",
                 posterPath: dto.poster_path,
                 genre: genreName
             )
         }
-        
-        // Filter Duplicates
-        let uniqueItems = Array(Dictionary(grouping: items, by: { $0.id }).values.compactMap { $0.first })
-        
-        // Apply Quality Filters
-        return uniqueItems
-            .filter { $0.type != "person" }
-            // Audit Check: Ensure we are filtering based on the mapped TMDB vote_average
-            .filter { $0.rating >= 6.0 }
-            .sorted { $0.rating > $1.rating }
     }
-}
-
-// MARK: - Internal Response Models (Decoupled & Sendable)
-fileprivate struct TMDBListResponse: Decodable, Sendable {
-    let results: [TMDBResult]
-}
-
-// Audit Check: TMDBResult uses 'vote_average', NOT 'imdb_rating'
-fileprivate struct TMDBResult: Decodable, Sendable {
-    let id: Int
-    let title: String?
-    let name: String?
-    let overview: String?
-    let release_date: String?
-    let first_air_date: String?
-    let vote_average: Double? // This is the correct field from TMDB
-    let vote_count: Int?
-    let poster_path: String?
-    let original_language: String?
-    let media_type: String?
-    let genre_ids: [Int]?
 }

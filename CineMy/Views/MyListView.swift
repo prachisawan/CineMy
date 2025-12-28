@@ -4,7 +4,7 @@ import SwiftData
 struct MyListView: View {
     @Environment(\.modelContext) private var modelContext
     
-    // Toggle State: 0 = Watching, 1 = Watchlist (Reversed)
+    // Toggle State: 0 = Watching, 1 = Watchlist
     @State private var selectedTab: Int = 0
     
     // 1. Currently Watching (In Progress)
@@ -18,13 +18,13 @@ struct MyListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // TOGGLE BAR
-                Picker("List Type", selection: $selectedTab) {
-                    Text("Watching").tag(0)    // First item
-                    Text("Watchlist").tag(1)   // Second item
-                }
-                .pickerStyle(.segmented)
+                // TOGGLE BAR: Custom Elite Segmented Control
+                EliteSegmentedControl(
+                    options: ["Watching", "Watchlist"],
+                    selectedIndex: $selectedTab
+                )
                 .padding()
+                .padding(.bottom, 5) // Extra spacing below
                 
                 // THE LIST
                 if currentItems.isEmpty {
@@ -74,7 +74,7 @@ struct MyListView: View {
     }
 }
 
-// Helper Card View (Same as before)
+// Helper Card View
 struct MyListCard: View {
     let item: EliteItem
     let isWatching: Bool
@@ -91,11 +91,11 @@ struct MyListCard: View {
                     } placeholder: {
                         Color.gray.opacity(0.3)
                     }
-                    .frame(width: 60, height: 90)
+                    .frame(width: 80, height: 120) // Bigger Poster
                     .cornerRadius(8)
                 } else {
                     Rectangle().fill(Color.gray.opacity(0.3))
-                        .frame(width: 60, height: 90)
+                        .frame(width: 80, height: 120) // Bigger Poster
                         .cornerRadius(8)
                         .overlay(Image(systemName: "film").foregroundStyle(.gray))
                 }
@@ -136,7 +136,7 @@ struct MyListCard: View {
                         .foregroundStyle(.orange)
                 }
              }
-             .padding(.vertical, 4)
+             .padding(.vertical, 8) // Increased vertical padding
         }
         .listRowSeparator(.hidden)
     }

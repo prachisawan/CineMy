@@ -3,6 +3,7 @@ import SwiftData
 
 struct SearchView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var friends: [Friend]
     
     // We use State for results now, because they come from the Web, not the Database
     @State private var searchResults: [EliteItem] = []
@@ -10,17 +11,43 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var errorMessage: String?
     
+    // Watch Party State
+    @State private var showFriendFilter = false
+    @State private var selectedFriendCodes: Set<String> = []
+    
     private let service = TMDBService() // Our new API engine
+    private let friendService = FriendService.shared // Start using the shared service directly for refreshing
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Search Bar
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Search the World")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal)
+                    HStack {
+                        Text("Search the World")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if !friends.isEmpty {
+                            Button(action: { showFriendFilter = true }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: selectedFriendCodes.isEmpty ? "person.2" : "person.2.fill")
+                                    if !selectedFriendCodes.isEmpty {
+                                        Text("\(selectedFriendCodes.count)")
+                                            .font(.caption2)
+                                            .bold()
+                                            .padding(4)
+                                            .background(Color.blue)
+                                            .foregroundColor(.white)
+                                            .clipShape(Circle())
+                                    }
+                                }
+                                .font(.caption)
+                                .foregroundColor(selectedFriendCodes.isEmpty ? .secondary : .blue)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
                     
                     HStack {
                         Image(systemName: "globe")
@@ -55,7 +82,15 @@ struct SearchView: View {
                         Text("\(searchResults.count) results found")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Spacer()
+                        
+                        if !selectedFriendCodes.isEmpty {
+                            Spacer()
+                            Text("Filtering for \(selectedFriendCodes.count) friends")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                        } else {
+                            Spacer()
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 5)
@@ -70,7 +105,11 @@ struct SearchView: View {
                 } else if let error = errorMessage {
                     ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
                 } else if searchResults.isEmpty && !searchText.isEmpty {
-                    ContentUnavailableView("No Results", systemImage: "magnifyingglass", description: Text("Try a different title or language."))
+                    if !selectedFriendCodes.isEmpty {
+                         ContentUnavailableView("All Watched!", systemImage: "checkmark.seal", description: Text("No unwatched movies found for this group.\nTry a different search."))
+                    } else {
+                        ContentUnavailableView("No Results", systemImage: "magnifyingglass", description: Text("Try a different title or language."))
+                    }
                 } else if searchText.isEmpty {
                     ContentUnavailableView("Global Search", systemImage: "popcorn", description: Text("Search for any movie or show.\nTry 'Korean Thriller' or 'Inception'"))
                 } else {
@@ -85,6 +124,64 @@ struct SearchView: View {
                 }
             }
             .navigationTitle("Search")
+            .sheet(isPresented: $showFriendFilter) {
+                NavigationStack {
+                    List {
+                        Section(header: Text("Filter Watched Movies")) {
+                            Toggle("Show Unwatched by Me", isOn: .constant(true))
+                                .disabled(true)
+                                .tint(.blue)
+                            
+                            ForEach(friends) { friend in
+                                HStack {
+                                    Image(systemName: "person.circle")
+                                    VStack(alignment: .leading) {
+                                        Text(friend.nickname)
+                                        Text("\(friend.watchedMovies.count) watched")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    if selectedFriendCodes.contains(friend.code) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if selectedFriendCodes.contains(friend.code) {
+                                        selectedFriendCodes.remove(friend.code)
+                                    } else {
+                                        selectedFriendCodes.insert(friend.code)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Section(footer: Text("Tap 'Refresh Data' to ensure you have the latest watch history from the cloud.")) {
+                            Button("Refresh Friends Data") {
+                                Task {
+                                    await refreshAllFriends()
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                    }
+                    .navigationTitle("Group Watch")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                showFriendFilter = false
+                                if !searchResults.isEmpty {
+                                    // Re-filter existing results without API call if just toggling
+                                    performSearch() 
+                                }
+                            }
+                        }
+                    }
+                }
+                .presentationDetents([.medium, .large])
+            }
         }
     }
     
@@ -112,8 +209,21 @@ struct SearchView: View {
         }
     }
     
-    // Sync API results with local DB to show correct status (Watched/In Progress)
+    private func refreshAllFriends() async {
+        for friend in friends {
+            if let (count, list) = try? await friendService.fetchFriend(code: friend.code) {
+                await MainActor.run {
+                    friend.watchedCount = count
+                    friend.watchedMovies = list
+                    friend.lastUpdated = Date()
+                }
+            }
+        }
+    }
+    
+    // Sync API results with local DB AND Apply Friend Filters
     private func syncWithDatabase(_ items: [EliteItem]) -> [EliteItem] {
+        // 1. First, merge with local data (to know if I watched it)
         let syncedItems = items.map { item -> EliteItem in
             let id = item.id
             let descriptor = FetchDescriptor<EliteItem>(predicate: #Predicate { $0.id == id })
@@ -123,9 +233,36 @@ struct SearchView: View {
             return item
         }
         
-        // Filter out items that are already watched (as requested by user)
-        // Keep items that are new OR in-progress. Hide finished ones.
-        return syncedItems.filter { $0.watchedCount == 0 }
+        // 2. Identify Exclusion List (My Watched + Friends Watched)
+        var excludedTMDBIDs: Set<Int> = []
+        
+        // Add selected friends' history
+        let activeFriends = friends.filter { selectedFriendCodes.contains($0.code) }
+        
+        print("DEBUG: Filtering for \(activeFriends.count) friends.")
+        
+        for friend in activeFriends {
+            print("DEBUG: Friend \(friend.nickname) has watched IDs: \(friend.watchedMovies)")
+            for id in friend.watchedMovies {
+                excludedTMDBIDs.insert(id)
+            }
+        }
+        
+        print("DEBUG: Total Excluded IDs: \(excludedTMDBIDs)")
+        
+        // 3. Filter
+        return syncedItems.filter { item in
+            // Filter out if *I* watched it
+            if item.watchedCount > 0 { return false }
+            
+            // Filter out if *Friend* watched it
+            if excludedTMDBIDs.contains(item.tmdbId) { 
+                print("DEBUG: Hiding \(item.title) (ID: \(item.tmdbId)) because a friend saw it.")
+                return false 
+            }
+            
+            return true
+        }
     }
 }
 

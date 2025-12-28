@@ -17,6 +17,11 @@ struct ContentView: View {
                 .tabItem {
                     Label("History", systemImage: "clock")
                 }
+            
+            FriendsManagerView()
+                .tabItem {
+                    Label("Friends", systemImage: "person.2")
+                }
         }
     }
 }
