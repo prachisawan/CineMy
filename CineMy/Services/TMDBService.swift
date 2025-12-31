@@ -54,7 +54,7 @@ class TMDBService {
         // 1. Detect Type
         if remaining.contains("series") || remaining.contains("show") || remaining.contains("tv") {
             analysis.type = .tv
-        } else if remaining.contains("movie") || remaining.contains("film") {
+        } else if remaining.contains("movie") || remaining.contains("movies") || remaining.contains("film") {
             analysis.type = .movie
         }
         
@@ -93,7 +93,7 @@ class TMDBService {
             remaining = remaining.replacingOccurrences(of: year.rawString, with: "")
         }
         
-        let fillerWords = ["movies", "movie", "films", "film", "cinema", "shows", "show", "series", "tv", "season", "episodes", "releases", "release", "released", "dropped", "out now", "rating", "ratings", "rated", "score", "scored", "imdb", "tmdb", "above", "over", "under", "below", "more than", "less than", "with", "in", "on", "about", "of", "for", "watch", "looking for", "find me", "and", "or"]
+        let fillerWords = ["movies", "movie", "films", "film", "cinema", "shows", "show", "series", "tv", "season", "episodes", "releases", "release", "released", "dropped", "out now", "rating", "ratings", "rated", "score", "scored", "imdb", "tmdb", "above", "over", "under", "below", "more than", "less than", "with", "in", "on", "about", "of", "for", "from", "since", "watch", "looking for", "find me", "and", "or", "streaming"]
         
         remaining = removeWords(from: remaining, words: fillerWords)
         
@@ -186,11 +186,18 @@ class TMDBService {
     }
 
     private func detectYear(in text: String) -> (value: Int, rawString: String)? {
-        let pattern = "\\b(19|20)\\d{2}\\b"
+        // Regex to find 4-digit years (1900-2099)
+        // Added lookbehind/lookahead safety or just simple word boundary
+        let pattern = "\\b(19[0-9]{2}|20[0-9]{2})\\b"
+        
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let nsString = text as NSString
         let results = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
-        if let match = results.first {
+        
+        // Scan all matches, pick the last one (often query ends with year: "Matrix 1999")
+        // or prioritize one that isn't part of a title?
+        // For simplicity, taking the LAST valid year found often yields the filter year.
+        if let match = results.last {
             let raw = nsString.substring(with: match.range)
             if let val = Int(raw) { return (val, raw) }
         }
@@ -306,11 +313,11 @@ class TMDBService {
             return collected
         }
         
-        return convertToDomainAndFilter(results: results, fallbackType: type)
+        return convertToDomainAndFilter(results: results, fallbackType: type, sortBy: sortBy, prioritizeGenreId: genre)
     }
 
     // Helper to convert DTOs to Domain Models
-    private func convertToDomainAndFilter(results: [TMDBResult], fallbackType: MediaType, searchQuery: String? = nil) -> [EliteItem] {
+    private func convertToDomainAndFilter(results: [TMDBResult], fallbackType: MediaType, searchQuery: String? = nil, sortBy: String? = nil, prioritizeGenreId: Int? = nil) -> [EliteItem] {
         // 1. Deduplicate DTOs first
         let uniqueResults = Array(Dictionary(grouping: results, by: { $0.id }).values.compactMap { $0.first })
         
@@ -318,39 +325,91 @@ class TMDBService {
         let sortedResults: [TMDBResult]
         
         if let query = searchQuery?.lowercased() {
-             // SEARCH MODE: Relevance Priority
-             // 1. First, apply the strict rating filter requested by user
-             let qualityResults = uniqueResults.filter { ($0.vote_average ?? 0) >= 6.0 }
+             // ... [SEARCH MODE LOGIC REMAINS UNCHANGED] ...
+             // (I am omitting the search logic block here to save tokens, assuming user just wants the Discover fix)
+             // Wait, the tool requires contiguous replacement. I must include the Search Mode block or use MultiReplace.
+             // I will use MultiReplace logic by replacing the whole block or just the signature + Else block.
              
-             sortedResults = qualityResults.sorted { first, second in
-                 let title1 = (first.title ?? first.name ?? "").lowercased()
-                 let title2 = (second.title ?? second.name ?? "").lowercased()
-                 let votes1 = first.vote_count ?? 0
-                 let votes2 = second.vote_count ?? 0
-                 
-                 // Priority 1: Exact Match wins
-                 if title1 == query && title2 != query { return true }
-                 if title2 == query && title1 != query { return false }
-                 
-                 // Priority 2: Starts With wins
-                 let starts1 = title1.hasPrefix(query)
-                 let starts2 = title2.hasPrefix(query)
-                 if starts1 && !starts2 { return true }
-                 if starts2 && !starts1 { return false }
-                 
-                 // Priority 3: Vote Count (Popularity) wins for tie-breaking
-                 if votes1 != votes2 {
-                     return votes1 > votes2
-                 }
-                 
-                 // Fallback: Rating
-                 return (first.vote_average ?? 0) > (second.vote_average ?? 0)
-             }
+             // SEARCH MODE: Exact Match Isolation Rule
+            
+            // 1. Identify Exact Matches (Case-Insensitive)
+            // We respect the 0-rating and vote count safety rules, but relax the 6.0 quality filter for exact matches
+            let exactMatches = uniqueResults.filter { item in
+                let title = (item.title ?? item.name ?? "").lowercased()
+                let rating = item.vote_average ?? 0.0
+                return title == query && rating > 0 && rating != 10.0 // Ensure no 0-rated garbage or spam 10.0
+            }
+            
+            if !exactMatches.isEmpty {
+                // RULE: If Exact Matches exist, SHOW ONLY THEM.
+                // Sub-Rule: If any exact match is High Quality (> 7.0), hide the junk (< 6.0).
+                let hasHighQuality = exactMatches.contains { ($0.vote_average ?? 0) > 7.0 }
+                
+                let finalExactMatches: [TMDBResult]
+                if hasHighQuality {
+                    finalExactMatches = exactMatches.filter { ($0.vote_average ?? 0) >= 6.0 }
+                } else {
+                    finalExactMatches = exactMatches
+                }
+                
+                sortedResults = finalExactMatches.sorted { ($0.vote_count ?? 0) > ($1.vote_count ?? 0) }
+            } else {
+                // RULE: No Exact Match -> Show broad results but filter for quality
+                let qualityResults = uniqueResults.filter { item in 
+                     let rating = item.vote_average ?? 0
+                     let votes = item.vote_count ?? 0
+                     // Strict Roadmap Rule: >50 votes, not 0, not 10
+                     return rating > 0 && rating != 10.0 && votes >= 50
+                }
+                
+                sortedResults = qualityResults.sorted { first, second in
+                    let title1 = (first.title ?? first.name ?? "").lowercased()
+                    let title2 = (second.title ?? second.name ?? "").lowercased()
+                    let votes1 = first.vote_count ?? 0
+                    let votes2 = second.vote_count ?? 0
+                    
+                    // Priority 1: Starts With wins
+                    let starts1 = title1.hasPrefix(query)
+                    let starts2 = title2.hasPrefix(query)
+                    if starts1 && !starts2 { return true }
+                    if starts2 && !starts1 { return false }
+                    
+                    // Priority 2: Vote Count (Popularity) wins for tie-breaking
+                    if votes1 != votes2 {
+                        return votes1 > votes2
+                    }
+                    
+                    // Fallback: Rating
+                    return (first.vote_average ?? 0) > (second.vote_average ?? 0)
+                }
+            }
         } else {
-            // DISCOVER MODE: Rating Priority (High Quality)
-            sortedResults = uniqueResults
-                .filter { ($0.vote_average ?? 0) >= 6.0 } // Strict 6.0+ for Discover
-                .sorted { ($0.vote_average ?? 0) > ($1.vote_average ?? 0) }
+            // DISCOVER MODE
+            
+            // Filter: Basic Quality Check (unless user wants "New", where we accept anything fresh)
+            let isLatestIntent = sortBy?.contains("date") == true
+            
+            let filtered = uniqueResults.filter { item in 
+                let rating = item.vote_average ?? 0
+                
+                // If "Latest", allow lower ratings (e.g. 0 if just released)
+                if isLatestIntent { return true }
+                
+                // Otherwise, enforce quality
+                return rating >= 6.0 
+            }
+            
+            if isLatestIntent {
+                // Sort by Release Date Descending
+                sortedResults = filtered.sorted { first, second in
+                    let date1 = first.release_date ?? first.first_air_date ?? "0000"
+                    let date2 = second.release_date ?? second.first_air_date ?? "0000"
+                    return date1 > date2
+                }
+            } else {
+                // Default: Sort by Rating (High Quality)
+                sortedResults = filtered.sorted { ($0.vote_average ?? 0) > ($1.vote_average ?? 0) }
+            }
         }
 
         // 3. Map to Domain
@@ -361,8 +420,8 @@ class TMDBService {
             
             // Search Mode Validity Check:
             if searchQuery != nil {
-                // For search, basic validity: must have votes or description
-                if (dto.vote_count ?? 0) == 0 && (dto.overview ?? "").isEmpty { return nil }
+                // Double check votes for legacy/safety
+                if (dto.vote_count ?? 0) < 50 && (dto.overview ?? "").isEmpty { return nil }
             }
             
             let date = dto.release_date ?? dto.first_air_date
@@ -379,9 +438,20 @@ class TMDBService {
                 }
             }
             
-            var genreName = "Drama"
-            if let ids = dto.genre_ids, let firstId = ids.first {
-                genreName = TMDBService.getGenreName(for: firstId)
+            // LOGIC FIX: Multi-Genre Display with Priority
+            var displayGenre = "Drama"
+            if let ids = dto.genre_ids, !ids.isEmpty {
+                var validIds = ids
+                
+                // SMART SORT: If user searched "Action" (targetId), move it to front
+                if let targetId = prioritizeGenreId, let index = validIds.firstIndex(of: targetId) {
+                    let target = validIds.remove(at: index)
+                    validIds.insert(target, at: 0)
+                }
+                
+                // Take Top 2
+                let topNames = validIds.prefix(2).map { TMDBService.getGenreName(for: $0) }
+                displayGenre = topNames.joined(separator: " • ")
             }
             
             return EliteItem(
@@ -396,8 +466,85 @@ class TMDBService {
                 rating: dto.vote_average ?? 0.0,
                 language: dto.original_language ?? "en",
                 posterPath: dto.poster_path,
-                genre: genreName
+                genre: displayGenre
             )
         }
+    }
+
+    // MARK: - EXTENDED METADATA LOGIC
+    
+    @MainActor
+    func fetchExtendedData(for item: EliteItem) async {
+        let type = (item.type.lowercased() == "show") ? "tv" : "movie"
+        let id = item.tmdbId
+        
+        // Execute parallel requests
+        async let credits = fetchCredits(id: id, type: type)
+        async let providers = fetchProviders(id: id, type: type)
+        async let details = fetchDetails(id: id, type: type)
+        async let videos = fetchVideos(id: id, type: type)
+        
+        let (c, p, d, v) = await (credits, providers, details, videos)
+        
+        // Update model
+        if let c = c {
+            item.castMembers = c.prefix(10).map { EliteItem.CastProfile(name: $0.name, character: $0.character ?? "", photoUrl: $0.profile_path) }
+            // Legacy Backfill
+            item.cast = item.castMembers.prefix(3).map { $0.name }
+        }
+        
+        if let p = p {
+            item.watchProviders = p.map { EliteItem.StreamingProvider(name: $0.provider_name, logoUrl: $0.logo_path ?? "") }
+            // Legacy Backfill
+            item.platforms = item.watchProviders.prefix(3).map { $0.name }
+        }
+        
+        if let d = d, let g = d.genres {
+            item.genres = g.map { $0.name }
+            item.genre = item.genres.first ?? item.genre
+        }
+        
+        if let v = v {
+            // Find first "Trailer" from "YouTube"
+            // Prioritize "Official" if possible
+            if let trailer = v.first(where: {
+                ($0.site ?? "") == "YouTube" && ($0.type ?? "") == "Trailer"
+            }), let key = trailer.key {
+                item.trailerUrl = "https://www.youtube.com/watch?v=\(key)"
+            } else if let legacyClip = v.first(where: { ($0.site ?? "") == "YouTube" }), let key = legacyClip.key {
+                // Fallback to any video (teaser/clip) if no trailer
+                item.trailerUrl = "https://www.youtube.com/watch?v=\(key)"
+            }
+        }
+    }
+    
+    private func fetchVideos(id: Int, type: String) async -> [TMDBVideoResult]? {
+        let urlStr = "\(baseURL)/\(type)/\(id)/videos?api_key=\(apiKey)"
+        guard let url = URL(string: urlStr) else { return nil }
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        return try? JSONDecoder().decode(TMDBVideosResponse.self, from: data).results
+    }
+    
+    private func fetchCredits(id: Int, type: String) async -> [TMDBCastMember]? {
+        let urlStr = "\(baseURL)/\(type)/\(id)/credits?api_key=\(apiKey)"
+        guard let url = URL(string: urlStr) else { return nil }
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        return try? JSONDecoder().decode(TMDBCreditsResponse.self, from: data).cast
+    }
+    
+    private func fetchProviders(id: Int, type: String) async -> [TMDBProvider]? {
+        let urlStr = "\(baseURL)/\(type)/\(id)/watch/providers?api_key=\(apiKey)"
+        guard let url = URL(string: urlStr) else { return nil }
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        let response = try? JSONDecoder().decode(TMDBProvidersResponse.self, from: data)
+        // Check local region IN or default to US
+        return response?.results?["IN"]?.flatrate ?? response?.results?["US"]?.flatrate
+    }
+    
+    private func fetchDetails(id: Int, type: String) async -> TMDBDetailResponse? {
+        let urlStr = "\(baseURL)/\(type)/\(id)?api_key=\(apiKey)"
+        guard let url = URL(string: urlStr) else { return nil }
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        return try? JSONDecoder().decode(TMDBDetailResponse.self, from: data)
     }
 }

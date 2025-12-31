@@ -5,52 +5,82 @@ struct MovieDetailView: View {
     @Bindable var item: EliteItem
     @Environment(\.modelContext) private var modelContext
     @State private var showToast = false
+    @State private var isLoadingExtras = false
+    
+    // Service for separate fetching if needed, though we could use shared if static
+    private let tmdbService = TMDBService()
     
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Header Image
+                    // Header Image with Trailer Overlay
                     if let path = item.posterPath {
-                        AsyncImage(url: URL(string: "https://image.tmdb.org/t/p/w500\(path)")) { image in
-                            image.resizable()
-                                 .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Rectangle().foregroundStyle(.gray.opacity(0.3))
-                                       .frame(height: 300)
+                        ZStack(alignment: .center) {
+                            AsyncImage(url: URL(string: "https://image.tmdb.org/t/p/w500\(path)")) { image in
+                                image.resizable()
+                                     .aspectRatio(contentMode: .fill)
+                            } placeholder: {
+                                Rectangle().foregroundStyle(.gray.opacity(0.3))
+                                           .frame(height: 300)
+                            }
+                            .frame(height: 300)
+                            .clipped()
+                            
+                            // Trailer Play Button Overlay
+                            if let trailerUrl = item.trailerUrl, let url = URL(string: trailerUrl) {
+                                Link(destination: url) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(.ultraThinMaterial)
+                                            .frame(width: 60, height: 60)
+                                            .shadow(radius: 10)
+                                        
+                                        Image(systemName: "play.fill")
+                                            .font(.title)
+                                            .foregroundStyle(.white)
+                                            .offset(x: 2) // Optical adjustment
+                                    }
+                                }
+                            }
                         }
-                        .frame(height: 300)
-                        .clipped()
                     }
                     
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Title Area (Unchanged)
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Title Area
                         Text(item.title)
                             .font(.largeTitle)
                             .bold()
+                            .padding(.top, -10) // Reduced gap
                         
-                        HStack {
-                             Text(item.releaseYear)
-                                .padding(6)
-                                .background(Color.secondary.opacity(0.2))
-                                .cornerRadius(8)
+                        // Metadata Row (Year • Rating • Genres) (Blue Genre Text)
+                        HStack(spacing: 6) {
+                            Text(item.releaseYear)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                             
-                            Text(item.type.uppercased())
-                                .padding(6)
-                                .background(Color.blue.opacity(0.2))
-                                .foregroundStyle(.blue)
-                                .cornerRadius(8)
+                            Text("•")
+                                .foregroundStyle(.secondary)
                             
                             HStack(spacing: 4) {
-                                Image(systemName: "star.fill").foregroundStyle(.yellow)
+                                Image(systemName: "star.fill").foregroundStyle(.yellow).font(.caption)
                                 Text(String(format: "%.1f", item.rating))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
                             }
+                            
+                            Text("•")
+                                .foregroundStyle(.secondary)
+                                
+                            // Genres in Blue
+                            Text(item.genres.prefix(2).joined(separator: ", ").isEmpty ? item.genre : item.genres.prefix(2).joined(separator: ", "))
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.blue)
                         }
-                        .font(.caption.bold())
                         
-                        // Action Buttons - Refactored 2-Button Layout
+                        // Action Buttons
                         HStack(alignment: .top, spacing: 12) {
-                            // 1. Saved Button (Left) - Unchanged
+                            // Saved Button
                             Button(action: {
                                 ensureItemIsSaved()
                                 
@@ -60,85 +90,152 @@ struct MovieDetailView: View {
                                 }
                                 
                                 if isAdding {
-                                    withAnimation {
-                                        showToast = true
-                                    }
+                                    withAnimation { showToast = true }
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                        withAnimation {
-                                            showToast = false
-                                        }
+                                        withAnimation { showToast = false }
                                     }
                                 }
                             }) {
                                 VStack {
                                     Image(systemName: item.isWatchlist ? "heart.fill" : "heart")
+                                        .font(.system(size: 18, weight: .bold)) // Restored weight
                                     Text(item.isWatchlist ? "Saved" : "Save")
-                                        .font(.caption)
+                                        .font(.caption.bold()) // Restored weight
                                 }
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 50) // Fixed height
-                                .padding(.vertical, 4)
+                                .frame(height: 50) // Restored height
+                                .padding(.vertical, 0)
                                 .background(item.isWatchlist ? Color.pink : Color.pink.opacity(0.1))
                                 .foregroundStyle(item.isWatchlist ? .white : .pink)
-                                .cornerRadius(12)
+                                .cornerRadius(12) // Rounded
                             }
 
-                            // 2. Dynamic Action Button (Right) & Counter
-                            VStack(spacing: 8) {
+                            // Watch/Complete Button
+                            VStack(spacing: 4) {
                                 Button(action: {
                                     ensureItemIsSaved()
                                     withAnimation {
                                         if item.isInProgress {
-                                            // Complete Action: Move to History
                                             item.isInProgress = false
                                             item.watchedCount += 1
                                             item.lastWatched = Date()
                                             Task { await syncAfterWatch() }
                                         } else {
-                                            // Active Action: Move to Watching
                                             item.isInProgress = true
-                                            
-                                            // Fix: If starting to watch, remove from Watchlist if it was there
-                                            if item.isWatchlist {
-                                                item.isWatchlist = false
-                                            }
+                                            if item.isWatchlist { item.isWatchlist = false }
                                         }
                                     }
                                 }) {
                                     VStack {
                                         Image(systemName: item.isInProgress ? "checkmark" : "play.fill")
+                                            .font(.system(size: 18, weight: .bold)) // Restored weight
                                         Text(item.isInProgress ? "Mark as Watched" : "Start Watching")
-                                            .font(.caption)
+                                            .font(.caption.bold()) // Restored weight
                                     }
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 50) // Fixed height
-                                    .padding(.vertical, 4)
+                                    .frame(height: 50) // Restored height
+                                    .padding(.vertical, 0)
                                     .background(item.isInProgress ? Color.green : Color.blue)
                                     .foregroundStyle(.white)
-                                    .cornerRadius(12)
+                                    .cornerRadius(12) // Rounded
                                 }
                                 
-                                // History Counter (Below Button 2)
                                 if item.watchedCount > 0 {
-                                    Text("You have watched this \(item.watchedCount) time(s).")
+                                    Text("Watched \(item.watchedCount)x")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.center)
-                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                         }
                         
+
+                        
+                        // WHERE TO WATCH (Accessible Row)
+                        if !item.watchProviders.isEmpty {
+                            HStack(alignment: .center, spacing: 12) {
+                                Text("Stream on:")
+                                    .font(.subheadline) // Increased size
+                                    .foregroundStyle(.secondary)
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(item.watchProviders, id: \.name) { provider in
+                                            if let url = URL(string: "https://image.tmdb.org/t/p/original\(provider.logoUrl)") {
+                                                AsyncImage(url: url) { image in
+                                                    image.resizable()
+                                                } placeholder: {
+                                                    Color.gray.opacity(0.3)
+                                                }
+                                                .frame(width: 40, height: 40) // Increased size
+                                                .cornerRadius(8)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                        
                         Divider()
+                            .padding(.top, 4)
                         
                         Text("About")
                             .font(.headline)
                         Text(item.overview)
                             .font(.body)
                             .foregroundStyle(.secondary)
-                            .lineSpacing(4)
+                            .lineSpacing(2) // Tighter spacing
+                        
+                        // 3. TOP CAST
+                        if !item.castMembers.isEmpty {
+                            Divider()
+                            
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Top Cast")
+                                    .font(.headline)
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 16) {
+                                        ForEach(item.castMembers, id: \.name) { member in
+                                            VStack(spacing: 8) {
+                                                if let path = member.photoUrl, let url = URL(string: "https://image.tmdb.org/t/p/w200\(path)") {
+                                                    AsyncImage(url: url) { image in
+                                                        image.resizable().aspectRatio(contentMode: .fill)
+                                                    } placeholder: {
+                                                        Color.gray.opacity(0.3)
+                                                    }
+                                                    .frame(width: 80, height: 80)
+                                                    .clipShape(Circle())
+                                                } else {
+                                                    Circle()
+                                                        .fill(Color.gray.opacity(0.3))
+                                                        .frame(width: 80, height: 80)
+                                                        .overlay(Text(String(member.name.prefix(1))).bold())
+                                                }
+                                                
+                                                VStack(spacing: 2) {
+                                                    Text(member.name)
+                                                        .font(.caption)
+                                                        .bold()
+                                                        .multilineTextAlignment(.center)
+                                                        .lineLimit(2)
+                                                    
+                                                    Text(member.character)
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                        .multilineTextAlignment(.center)
+                                                        .lineLimit(1)
+                                                }
+                                                .frame(width: 90)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     .padding()
+                    .padding(.bottom, 50) // Bottom spacing
                 }
             }
             .edgesIgnoringSafeArea(.top)
@@ -154,6 +251,14 @@ struct MovieDetailView: View {
                     .shadow(radius: 5)
                     .padding(.bottom, 50)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .task {
+            // Fetch extended data whenever this view appears
+            if item.genres.count <= 1 || item.castMembers.isEmpty {
+                isLoadingExtras = true
+                await tmdbService.fetchExtendedData(for: item)
+                isLoadingExtras = false
             }
         }
     }

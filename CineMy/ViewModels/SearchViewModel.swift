@@ -64,8 +64,11 @@ class SearchViewModel {
         
         var keywords: [String] = []
         
-        tagger.enumerateTags(in: searchText.startIndex..<searchText.endIndex, unit: .word, scheme: .nameType, options: [.omitPunctuation, .omitWhitespace, .joinNames]) { tag, tokenRange in
+        let stopWords: Set<String> = ["from", "in", "with", "by", "for", "about", "the", "a", "an", "on", "of"]
+        
+        tagger.enumerateTags(in: searchText.startIndex..<searchText.endIndex, unit: .word, scheme: .nameType, options: [.omitPunctuation, .omitWhitespace]) { tag, tokenRange in // Removed .joinNames
             let word = String(searchText[tokenRange])
+            if stopWords.contains(word.lowercased()) { return true }
             if let tag = tag {
                 if tag == .personalName {
                     extractedPerson = word
@@ -101,12 +104,14 @@ class SearchViewModel {
                 }
             }
             
-            // Person Filter (Director or Cast)
+                // Person Filter (Director or Cast)
             if let person = extractedPerson {
                 let personLower = person.lowercased()
                 let inCast = item.cast.contains { $0.lowercased().contains(personLower) }
                 let isDirector = item.director.lowercased().contains(personLower)
-                if !inCast && !isDirector {
+                let titleMatch = item.title.lowercased().contains(personLower) // Fix: Allow if Title matches the "Person" name
+                
+                if !inCast && !isDirector && !titleMatch {
                     matches = false
                 }
             }
