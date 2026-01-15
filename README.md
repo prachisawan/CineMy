@@ -144,36 +144,7 @@ CineMy/
 
 ---
 
-## 🎯 Key Highlights
 
-- **100% SwiftUI** — No UIKit dependencies
-- **Offline-first** — SwiftData persists all data locally
-- **Privacy-focused** — Anonymous friend sync, no accounts
-- **No ads** — Clean, distraction-free experience
-- **Modern iOS** — Built for iOS 17+ with latest APIs
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-- Report bugs via Issues
-- Suggest features
-- Submit pull requests
-
----
-
-## 📄 License
-
-This project is available for personal and educational use.
-
----
-
-## 🙏 Acknowledgments
-
-- [TMDB](https://www.themoviedb.org/) for the comprehensive movie database API
-- [Firebase](https://firebase.google.com/) for real-time sync capabilities
-- Apple for SwiftUI and SwiftData frameworks
 
 ---
 
