@@ -12,7 +12,7 @@ A beautifully crafted iOS movie & TV show companion app built with **SwiftUI** a
 ## ✨ Features
 
 ### 🔍 Intelligent Search
-Search movies and TV shows using **natural language queries** — no need for exact titles!
+Search movies and TV shows using **natural language queries** with no need for exact titles!
 - `"Malayalam thriller movies rated above 8"`
 - `"2023 horror films"`
 - `"Korean drama TV shows"`
@@ -20,10 +20,10 @@ Search movies and TV shows using **natural language queries** — no need for ex
 The app understands languages, genres, ratings, years, and content types to deliver exactly what you're looking for.
 
 ### 📊 Personal Tracking
-- **Watchlist** — Save movies you want to watch later
-- **Watch History** — Track what you've seen with watch counts
-- **In Progress** — Mark content you're currently watching
-- **User Ratings** — Rate movies on your own scale
+- **Watchlist**: Save movies you want to watch later
+- **Watch History**: Track what you've seen with watch counts
+- **In Progress**: Mark content you're currently watching
+- **User Ratings**: Rate movies on your own scale
 
 ### 👥 Group Watch (Social Sync)
 Plan movie nights with friends without the hassle:
