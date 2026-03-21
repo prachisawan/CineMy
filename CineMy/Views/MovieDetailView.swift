@@ -127,17 +127,29 @@ struct MovieDetailView: View {
                                     }
                                 }) {
                                     VStack {
-                                        Image(systemName: item.isInProgress ? "checkmark" : "play.fill")
-                                            .font(.system(size: 18, weight: .bold)) // Restored weight
-                                        Text(item.isInProgress ? "Mark as Watched" : "Start Watching")
-                                            .font(.caption.bold()) // Restored weight
+                                        if item.isInProgress {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 18, weight: .bold))
+                                            Text("Mark as Watched")
+                                                .font(.caption.bold())
+                                        } else if item.watchedCount > 0 {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 18, weight: .bold))
+                                            Text("Watched")
+                                                .font(.caption.bold())
+                                        } else {
+                                            Image(systemName: "play.fill")
+                                                .font(.system(size: 18, weight: .bold))
+                                            Text("Start Watching")
+                                                .font(.caption.bold())
+                                        }
                                     }
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 50) // Restored height
+                                    .frame(height: 50)
                                     .padding(.vertical, 0)
-                                    .background(item.isInProgress ? Color.green : Color.blue)
-                                    .foregroundStyle(.white)
-                                    .cornerRadius(12) // Rounded
+                                    .background(item.isInProgress ? Color.green.opacity(0.1) : (item.watchedCount > 0 ? Color.green : Color.blue))
+                                    .foregroundStyle(item.isInProgress ? .green : .white)
+                                    .cornerRadius(12)
                                 }
                                 
                                 if item.watchedCount > 0 {

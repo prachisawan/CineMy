@@ -1,5 +1,90 @@
 import Foundation
 
+// Copy TMDBService and related parts
+import Foundation
+
+// MARK: - API Response Models
+// Defined in a separate file to ensure no MainActor inference leakage.
+
+struct TMDBListResponse: Decodable, Sendable {
+    let results: [TMDBResult]
+}
+
+// TMDBResult uses 'vote_average', NOT 'imdb_rating'
+// TMDBResult uses 'vote_average', NOT 'imdb_rating'
+struct TMDBResult: Decodable, Sendable {
+    let id: Int
+    let title: String?
+    let name: String?
+    let overview: String?
+    let release_date: String?
+    let first_air_date: String?
+    let vote_average: Double? // This is the correct field from TMDB
+    let vote_count: Int?
+    let poster_path: String?
+    let original_language: String?
+    var media_type: String? // Changed from 'let' to 'var' to allow manual override in Service
+    let genre_ids: [Int]?
+}
+
+// MARK: - Extended Metadata Responses
+
+struct TMDBDetailResponse: Decodable, Sendable {
+    let genres: [TMDBGenre]?
+    let status: String?
+}
+
+struct TMDBGenre: Decodable, Sendable {
+    let id: Int
+    let name: String
+}
+
+struct TMDBCreditsResponse: Decodable, Sendable {
+    let cast: [TMDBCastMember]?
+}
+
+struct TMDBCastMember: Decodable, Sendable {
+    let name: String
+    let character: String?
+    let profile_path: String?
+    let order: Int?
+}
+
+struct TMDBProvidersResponse: Decodable, Sendable {
+    let results: [String: TMDBRegionProviders]?
+}
+
+struct TMDBRegionProviders: Decodable, Sendable {
+    let flatrate: [TMDBProvider]?
+    let rent: [TMDBProvider]?
+    let buy: [TMDBProvider]?
+}
+
+struct TMDBProvider: Decodable, Sendable {
+    let provider_name: String
+    let logo_path: String?
+}
+
+struct TMDBVideosResponse: Decodable, Sendable {
+    let results: [TMDBVideoResult]?
+}
+
+struct TMDBVideoResult: Decodable, Sendable {
+    let key: String?
+    let site: String?
+    let type: String?
+    let official: Bool?
+}
+    var media_type: String?
+    let genre_ids: [Int]?
+}
+
+class EliteItem: CustomStringConvertible {
+    let title: String
+    init(title: String) { self.title = title }
+    var description: String { return title }
+import Foundation
+
 final class TMDBService: Sendable {
     // ⚠️ REPLACE THIS WITH YOUR ACTUAL API KEY
     private let apiKey = "REDACTED_TMDB_KEY"
@@ -243,16 +328,10 @@ final class TMDBService: Sendable {
             components.queryItems = queryItems
             guard let url = components.url else { continue }
             
-            let (data, response) = try await URLSession.shared.data(from: url)
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                guard (200...299).contains(httpResponse.statusCode) else {
-                    throw URLError(.badServerResponse)
-                }
+            if let (data, _) = try? await URLSession.shared.data(from: url) {
+                let results = decodeListResponse(data: data)
+                allResults.append(contentsOf: results)
             }
-            
-            let results = Self.decodeListResponse(data: data)
-            allResults.append(contentsOf: results)
         }
         
         return convertToDomainAndFilter(results: allResults, fallbackType: type, searchQuery: query)
@@ -262,7 +341,7 @@ final class TMDBService: Sendable {
     private func fetchDiscover(type: MediaType, language: String?, genre: Int?, rating: Double?, year: Int?, sortBy: String) async throws -> [EliteItem] {
         // Fetch up to 4 pages (80 results) - 20 pages was causing massive lag
         // Return TMDBResult (struct) instead of EliteItem (class) to avoid Sendable warnings
-        let results = try await withThrowingTaskGroup(of: [TMDBResult].self) { group in
+        let results = await withTaskGroup(of: [TMDBResult].self) { group in
             for page in 1...4 {
                 group.addTask {
                     let endpoint = (type == .movie) ? "discover/movie" : "discover/tv"
@@ -304,18 +383,15 @@ final class TMDBService: Sendable {
                     components.queryItems = queryItems
                     guard let url = components.url else { return [] }
                     
-                    let (data, response) = try await URLSession.shared.data(from: url)
-                    if let httpResponse = response as? HTTPURLResponse {
-                        guard (200...299).contains(httpResponse.statusCode) else {
-                            throw URLError(.badServerResponse)
-                        }
+                    if let (data, _) = try? await URLSession.shared.data(from: url) {
+                        return decodeListResponse(data: data)
                     }
-                    return TMDBService.decodeListResponse(data: data)
+                    return []
                 }
             }
             
             var collected: [TMDBResult] = []
-            for try await pageResults in group {
+            for await pageResults in group {
                 collected.append(contentsOf: pageResults)
             }
             return collected
@@ -425,12 +501,11 @@ final class TMDBService: Sendable {
             let displayTitle = dto.title ?? dto.name ?? "Unknown"
             // Filter out Persons if any slipped through
             if dto.media_type == "person" { return nil }
+            
             // Search Mode Validity Check:
             if searchQuery != nil {
-                // Double check votes for legacy/safety. Some valid hits actually have empty overviews initially
-                if (dto.vote_count ?? 0) < 5 && (dto.overview ?? "").isEmpty { 
-                    return nil 
-                }
+                // Double check votes for legacy/safety
+                if (dto.vote_count ?? 0) < 50 && (dto.overview ?? "").isEmpty { return nil }
             }
             
             let date = dto.release_date ?? dto.first_air_date
@@ -557,17 +632,28 @@ final class TMDBService: Sendable {
         return try? JSONDecoder().decode(TMDBDetailResponse.self, from: data)
     }
 
-    // MARK: - Safe Decoding (Global)
-    private static func decodeListResponse(data: Data) -> [TMDBResult] {
-        do {
-            let response = try JSONDecoder().decode(TMDBListResponse.self, from: data)
-            return response.results
-        } catch {
-            print("TMDB Decode Error: \(error)")
-            if let jsonStr = String(data: data, encoding: .utf8) {
-                print("Raw JSON snippet length: \(jsonStr.count)")
-            }
-            return []
-        }
-    }
 }
+
+// MARK: - Safe Decoding (Global)
+private func decodeListResponse(data: Data) -> [TMDBResult] {
+    if let response = try? JSONDecoder().decode(TMDBListResponse.self, from: data) {
+        return response.results
+    }
+    return []
+}
+
+Task {
+    let service = TMDBService()
+    do {
+        print("Starting search...")
+        let results = try await service.searchMovies(query: "batman")
+        print("Results count: \(results.count)")
+        for r in results {
+            print("- \(r.title)")
+        }
+    } catch {
+        print("Error: \(error)")
+    }
+    exit(0)
+}
+RunLoop.main.run()

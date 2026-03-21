@@ -1,1 +1,11 @@
 Roadmap
+
+Enhance Search Query:
+a. Search results
+    - Should never show results with less than 50 votes and results rated 0 or 10
+b. Title Search:
+    - If finds exact match, should show only the exact match. If any of the exact match result has a rating more than 7 then Should not show results with rating <6
+    - If no exact match found, should show the results with the entire text in the title
+c. Discovery Search:
+    - 
+

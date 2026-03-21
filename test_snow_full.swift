@@ -1,5 +1,79 @@
 import Foundation
 
+// MARK: - API Response Models
+// Defined in a separate file to ensure no MainActor inference leakage.
+
+struct TMDBListResponse: Decodable, Sendable {
+    let results: [TMDBResult]
+}
+
+// TMDBResult uses 'vote_average', NOT 'imdb_rating'
+// TMDBResult uses 'vote_average', NOT 'imdb_rating'
+struct TMDBResult: Decodable, Sendable {
+    let id: Int
+    let title: String?
+    let name: String?
+    let overview: String?
+    let release_date: String?
+    let first_air_date: String?
+    let vote_average: Double? // This is the correct field from TMDB
+    let vote_count: Int?
+    let poster_path: String?
+    let original_language: String?
+    var media_type: String? // Changed from 'let' to 'var' to allow manual override in Service
+    let genre_ids: [Int]?
+}
+
+// MARK: - Extended Metadata Responses
+
+struct TMDBDetailResponse: Decodable, Sendable {
+    let genres: [TMDBGenre]?
+    let status: String?
+}
+
+struct TMDBGenre: Decodable, Sendable {
+    let id: Int
+    let name: String
+}
+
+struct TMDBCreditsResponse: Decodable, Sendable {
+    let cast: [TMDBCastMember]?
+}
+
+struct TMDBCastMember: Decodable, Sendable {
+    let name: String
+    let character: String?
+    let profile_path: String?
+    let order: Int?
+}
+
+struct TMDBProvidersResponse: Decodable, Sendable {
+    let results: [String: TMDBRegionProviders]?
+}
+
+struct TMDBRegionProviders: Decodable, Sendable {
+    let flatrate: [TMDBProvider]?
+    let rent: [TMDBProvider]?
+    let buy: [TMDBProvider]?
+}
+
+struct TMDBProvider: Decodable, Sendable {
+    let provider_name: String
+    let logo_path: String?
+}
+
+struct TMDBVideosResponse: Decodable, Sendable {
+    let results: [TMDBVideoResult]?
+}
+
+struct TMDBVideoResult: Decodable, Sendable {
+    let key: String?
+    let site: String?
+    let type: String?
+    let official: Bool?
+}
+import Foundation
+
 final class TMDBService: Sendable {
     // ⚠️ REPLACE THIS WITH YOUR ACTUAL API KEY
     private let apiKey = "REDACTED_TMDB_KEY"
@@ -425,12 +499,11 @@ final class TMDBService: Sendable {
             let displayTitle = dto.title ?? dto.name ?? "Unknown"
             // Filter out Persons if any slipped through
             if dto.media_type == "person" { return nil }
+            
             // Search Mode Validity Check:
             if searchQuery != nil {
-                // Double check votes for legacy/safety. Some valid hits actually have empty overviews initially
-                if (dto.vote_count ?? 0) < 5 && (dto.overview ?? "").isEmpty { 
-                    return nil 
-                }
+                // Double check votes for legacy/safety
+                if (dto.vote_count ?? 0) < 50 && (dto.overview ?? "").isEmpty { return nil }
             }
             
             let date = dto.release_date ?? dto.first_air_date
@@ -571,3 +644,126 @@ final class TMDBService: Sendable {
         }
     }
 }
+import Foundation
+import SwiftData
+
+@Model
+final class EliteItem {
+    @Attribute(.unique) var id: String
+    var tmdbId: Int
+    var title: String
+    var type: String // "movie" or "show"
+    var overview: String
+    var releaseYear: String
+    var director: String
+    var cast: [String] // Legacy simple list
+    var rating: Double
+    var language: String
+    var posterPath: String?
+    
+    // Status & Metadata
+    var watchedCount: Int = 0
+    var isInProgress: Bool = false
+    var isWatchlist: Bool = false
+    var lastWatched: Date?
+    var userRating: Int = 0 
+    var genre: String // Primary genre string
+    var platforms: [String] // Legacy list
+    
+    @Transient var isBroadMatch: Bool = false
+    
+    // NEW: rich metadata
+    var genres: [String] = [] // Full genre list
+    var castMembers: [CastProfile] = [] 
+    var watchProviders: [StreamingProvider] = []
+    
+    // NEW: Video Support
+    var trailerUrl: String?
+    
+    init(id: String, tmdbId: Int, title: String, type: String, overview: String, releaseYear: String, director: String, cast: [String], rating: Double, language: String, posterPath: String? = nil, genre: String = "Drama", platforms: [String] = [], isWatchlist: Bool = false, lastWatched: Date? = nil) {
+        self.id = id
+        self.tmdbId = tmdbId
+        self.title = title
+        self.type = type
+        self.overview = overview
+        self.releaseYear = releaseYear
+        self.director = director
+        self.cast = cast
+        self.rating = rating
+        self.language = language
+        self.posterPath = posterPath
+        self.genre = genre
+        self.platforms = platforms
+        self.isWatchlist = isWatchlist
+        self.lastWatched = lastWatched
+        self.userRating = 0
+        self.genres = [genre] // Default to primary
+        self.castMembers = []
+        self.watchProviders = []
+        self.trailerUrl = nil
+        
+        // Migrate legacy cast if possible (rarely populated in old code)
+        if !cast.isEmpty && castMembers.isEmpty {
+            self.castMembers = cast.map { CastProfile(name: $0, character: "Unknown", photoUrl: nil) }
+        }
+    }
+    
+    // Nested Models for Complex Data
+    struct CastProfile: Codable {
+        let name: String
+        let character: String
+        let photoUrl: String?
+    }
+    
+    struct StreamingProvider: Codable {
+        let name: String
+        let logoUrl: String
+    }
+}
+
+// We don't need the complex Decoder anymore because we are fetching from the Web!
+// But we keep a simple one just in case you still use the local file for backups.
+struct EliteItemDTO: Decodable {
+    let id: String?
+    let tmdb_id: Int
+    let title: String
+    let type: String?
+    let overview: String
+    let release_year: String?
+    let rating: Double
+    let language: String?
+    
+    func toModel() -> EliteItem {
+        return EliteItem(
+            id: UUID().uuidString,
+            tmdbId: tmdb_id,
+            title: title,
+            type: type ?? "movie",
+            overview: overview,
+            releaseYear: release_year ?? "2024",
+            director: "Unknown",
+            cast: [],
+            rating: rating,
+            language: language ?? "en"
+        )
+    }
+}
+import Foundation
+
+let queryToTest = "Society of Snow"
+
+Task {
+    let service = TMDBService()
+    do {
+        print("Starting search for '\(queryToTest)'...")
+        let results = try await service.searchMovies(query: queryToTest)
+        print("Results count: \(results.count)")
+        for r in results.prefix(5) {
+            print("- \(r.title)")
+        }
+    } catch {
+        print("Error: \(error)")
+    }
+    exit(0)
+}
+RunLoop.main.run()

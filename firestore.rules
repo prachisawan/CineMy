@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Match the 'users' collection (Used in FriendService.swift)
+    match /users/{userId} {
+      // 1. Allow any authenticated user to READ.
+      // This is required for 'fetchFriend' to work (searching for other users by friend code).
+      allow read: if request.auth != null;
+      
+      // 2. Allow write ONLY if the user is editing their own document.
+      // Checks that the document ID matches the authenticated User ID.
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Default Rule: Deny all other access by default for security.
+    // If you add more collections (e.g. 'movies'), add rules for them above.
+  }
+}
