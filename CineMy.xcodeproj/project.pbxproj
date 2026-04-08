@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		EAA400982F00298800A084CF /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = EAA400972F00298800A084CF /* FirebaseAuth */; };
 		EAA4009A2F00298800A084CF /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = EAA400992F00298800A084CF /* FirebaseFirestore */; };
+		EAB8C61F2F7BA278000C9A2D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = EAB8C61E2F7BA278000C9A2D /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,22 +33,15 @@
 		EAA400472EFFBD6400A084CF /* CineMy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CineMy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EAA400542EFFBD6500A084CF /* CineMyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CineMyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EAA4005E2EFFBD6500A084CF /* CineMyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CineMyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EAB8C61E2F7BA278000C9A2D /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		EAA400492EFFBD6400A084CF /* CineMy */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = CineMy;
-			sourceTree = "<group>";
-		};
-		EAA400572EFFBD6500A084CF /* CineMyTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = CineMyTests;
-			sourceTree = "<group>";
-		};
-		EAA400612EFFBD6500A084CF /* CineMyUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = CineMyUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -62,29 +56,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		EAA400512EFFBD6500A084CF /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		EAA4005B2EFFBD6500A084CF /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		EAA4003E2EFFBD6400A084CF = {
 			isa = PBXGroup;
 			children = (
+				EAB8C61E2F7BA278000C9A2D /* GoogleService-Info.plist */,
 				EAA400492EFFBD6400A084CF /* CineMy */,
-				EAA400572EFFBD6500A084CF /* CineMyTests */,
-				EAA400612EFFBD6500A084CF /* CineMyUITests */,
 				EAA400482EFFBD6400A084CF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -125,52 +104,6 @@
 			productName = CineMy;
 			productReference = EAA400472EFFBD6400A084CF /* CineMy.app */;
 			productType = "com.apple.product-type.application";
-		};
-		EAA400532EFFBD6500A084CF /* CineMyTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = EAA4006B2EFFBD6500A084CF /* Build configuration list for PBXNativeTarget "CineMyTests" */;
-			buildPhases = (
-				EAA400502EFFBD6500A084CF /* Sources */,
-				EAA400512EFFBD6500A084CF /* Frameworks */,
-				EAA400522EFFBD6500A084CF /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				EAA400562EFFBD6500A084CF /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				EAA400572EFFBD6500A084CF /* CineMyTests */,
-			);
-			name = CineMyTests;
-			packageProductDependencies = (
-			);
-			productName = CineMyTests;
-			productReference = EAA400542EFFBD6500A084CF /* CineMyTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		EAA4005D2EFFBD6500A084CF /* CineMyUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = EAA4006E2EFFBD6500A084CF /* Build configuration list for PBXNativeTarget "CineMyUITests" */;
-			buildPhases = (
-				EAA4005A2EFFBD6500A084CF /* Sources */,
-				EAA4005B2EFFBD6500A084CF /* Frameworks */,
-				EAA4005C2EFFBD6500A084CF /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				EAA400602EFFBD6500A084CF /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				EAA400612EFFBD6500A084CF /* CineMyUITests */,
-			);
-			name = CineMyUITests;
-			packageProductDependencies = (
-			);
-			productName = CineMyUITests;
-			productReference = EAA4005E2EFFBD6500A084CF /* CineMyUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -213,8 +146,6 @@
 			projectRoot = "";
 			targets = (
 				EAA400462EFFBD6400A084CF /* CineMy */,
-				EAA400532EFFBD6500A084CF /* CineMyTests */,
-				EAA4005D2EFFBD6500A084CF /* CineMyUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -224,20 +155,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		EAA400522EFFBD6500A084CF /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		EAA4005C2EFFBD6500A084CF /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
+				EAB8C61F2F7BA278000C9A2D /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -251,34 +169,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		EAA400502EFFBD6500A084CF /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		EAA4005A2EFFBD6500A084CF /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		EAA400562EFFBD6500A084CF /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = EAA400462EFFBD6400A084CF /* CineMy */;
-			targetProxy = EAA400552EFFBD6500A084CF /* PBXContainerItemProxy */;
-		};
-		EAA400602EFFBD6500A084CF /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = EAA400462EFFBD6400A084CF /* CineMy */;
-			targetProxy = EAA4005F2EFFBD6500A084CF /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		EAA400662EFFBD6500A084CF /* Debug */ = {
@@ -596,24 +487,6 @@
 			buildConfigurations = (
 				EAA400692EFFBD6500A084CF /* Debug */,
 				EAA4006A2EFFBD6500A084CF /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		EAA4006B2EFFBD6500A084CF /* Build configuration list for PBXNativeTarget "CineMyTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				EAA4006C2EFFBD6500A084CF /* Debug */,
-				EAA4006D2EFFBD6500A084CF /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		EAA4006E2EFFBD6500A084CF /* Build configuration list for PBXNativeTarget "CineMyUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				EAA4006F2EFFBD6500A084CF /* Debug */,
-				EAA400702EFFBD6500A084CF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
