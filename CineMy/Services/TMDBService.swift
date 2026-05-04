@@ -3,7 +3,7 @@ import Foundation
 final class TMDBService: Sendable {
     // Obfuscated API Key to prevent simple string extraction from compiled binary
     private var apiKey: String {
-        let obfuscated: [UInt8] = [76, 123, 30, 27, 78, 18, 78, 25, 31, 18, 73, 27, 19, 76, 28, 19, 29, 25, 26, 24, 76, 28, 26, 19, 28, 26, 25, 73, 73, 78, 123, 25]
+        let obfuscated: [UInt8] = [24, 28, 75, 30, 29, 72, 29, 78, 29, 18, 28, 30, 72, 79, 25, 25, 31, 29, 31, 28, 28, 28, 18, 24, 25, 76, 26, 73, 29, 78, 25, 78]
         return String(bytes: obfuscated.map { $0 ^ 42 }, encoding: .utf8)!
     }
     

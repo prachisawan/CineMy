@@ -24,3 +24,5 @@ DerivedData/
 
 # Secrets
 GoogleService-Info.plist
+Config/Secrets.xcconfig
+.env
