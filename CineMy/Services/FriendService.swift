@@ -28,7 +28,9 @@ class FriendService: ObservableObject {
         if Auth.auth().currentUser == nil {
             do {
                 try await Auth.auth().signInAnonymously()
+                #if DEBUG
                 print("DEBUG: Signed in anonymously with UID: \(Auth.auth().currentUser?.uid ?? "unknown")")
+                #endif
             } catch {
                 await MainActor.run { self.error = "Auth Error: \(error.localizedDescription)" }
                 return

@@ -6,10 +6,12 @@ struct SearchView: View {
     @Query private var friends: [Friend]
     
     // We use State for results now, because they come from the Web, not the Database
+    @State private var rawAPIResults: [EliteItem] = []
     @State private var searchResults: [EliteItem] = []
     @State private var searchText = ""
     @State private var isSearching = false
     @State private var errorMessage: String?
+    @State private var includeWatched = true
     
     // Watch Party State
     @State private var showFriendFilter = false
@@ -73,6 +75,17 @@ struct SearchView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(12)
                     .padding(.horizontal)
+                    
+                    Toggle("Include Watched Items", isOn: $includeWatched)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 24)
+                        .tint(.blue)
+                        .onChange(of: includeWatched) {
+                            withAnimation {
+                                self.searchResults = syncWithDatabase(rawAPIResults)
+                            }
+                        }
                 }
                 .padding(.bottom, 10)
                 
@@ -197,6 +210,7 @@ struct SearchView: View {
                 
                 // Update UI on Main Thread AND Sync with DB
                 await MainActor.run {
+                    self.rawAPIResults = items
                     self.searchResults = syncWithDatabase(items)
                     self.isSearching = false
                 }
@@ -252,15 +266,24 @@ struct SearchView: View {
         
         // 3. Filter
         return syncedItems.filter { item in
-            // Filter out if *I* watched it
-            if item.watchedCount > 0 { return false }
-            
-            // Filter out if *Friend* watched it
-            if excludedTMDBIDs.contains(item.tmdbId) { 
-                print("DEBUG: Hiding \(item.title) (ID: \(item.tmdbId)) because a friend saw it.")
+            // ALWAYS honor the manual toggle:
+            if !includeWatched && item.watchedCount > 0 { 
                 return false 
             }
             
+            // If building a Group Watchlist (friends selected), hide the movies ANYONE has seen.
+            if !selectedFriendCodes.isEmpty {
+                // Hide if I've seen it
+                if item.watchedCount > 0 { return false }
+                
+                // Hide if Friends have seen it
+                if excludedTMDBIDs.contains(item.tmdbId) { 
+                    print("DEBUG: Hiding \(item.title) (ID: \(item.tmdbId)) because a friend saw it.")
+                    return false 
+                }
+            }
+            
+            // If just doing a regular solo search, SHOW EVERYTHING so they can find their movie!
             return true
         }
     }
@@ -299,11 +322,20 @@ struct SmartSearchCard: View {
                     
                     Spacer()
                     
-                    // NEW: My List Badge Logic (Minimal Dot)
-                    if item.isWatchlist {
-                         Image(systemName: "heart.fill")
-                            .foregroundStyle(.pink) // Changed from purple bookmark to pink heart
-                            .font(.caption)
+                    HStack(spacing: 6) {
+                        // NEW: Watched Badge Logic
+                        if item.watchedCount > 0 {
+                             Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.caption)
+                        }
+                        
+                        // NEW: My List Badge Logic (Minimal Dot)
+                        if item.isWatchlist {
+                             Image(systemName: "heart.fill")
+                                .foregroundStyle(.pink)
+                                .font(.caption)
+                        }
                     }
                 }
                 

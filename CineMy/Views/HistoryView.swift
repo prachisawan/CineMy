@@ -253,8 +253,7 @@ struct DashboardChart: View {
         guard total > 0 else { return [] }
         
         let sorted = counts.sorted { $0.value > $1.value }
-        let topGenres = sorted.prefix(5)
-        let othersCount = sorted.dropFirst(5).map(\.value).reduce(0, +)
+        let topGenres = sorted.prefix(3)
         
         var data: [GenreData] = []
         let colors: [Color] = [.purple, .blue, .orange, .pink, .green, .cyan, .indigo]
@@ -264,95 +263,63 @@ struct DashboardChart: View {
             data.append(GenreData(name: element.key, count: element.value, percentage: percentage, color: colors[index % colors.count]))
         }
         
-        if othersCount > 0 {
-            let percentage = Int((Double(othersCount) / total) * 100)
-            data.append(GenreData(name: "Others", count: othersCount, percentage: percentage, color: .gray.opacity(0.5)))
-        }
-        
         return data
     }
     
-    var useSmallFonts: Bool {
-        chartData.count > 4
-    }
-    
     var body: some View {
-        HStack(spacing: 16) {
-            // Chart Area
-            ZStack {
-                Chart(chartData) { item in
-                    SectorMark(
-                        angle: .value("Count", item.count),
-                        innerRadius: .ratio(0.65), // Slightly thinner ring
-                        angularInset: 0
-                    )
-                    .cornerRadius(0)
-                    .foregroundStyle(item.color.opacity(
-                        selectedGenre == nil || selectedGenre == item.name ? 1.0 : 0.3
-                    ))
-                }
-                .frame(width: 120, height: 120) // Smaller chart
-                
-                VStack(spacing: 0) {
-                    Text("\(items.count)")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                }
-            }
-            .padding(.leading, 8)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Top Genres")
+                .font(.caption)
+                .bold()
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
             
-            Spacer()
-            
-            // Interactive Legend
-            VStack(alignment: .leading, spacing: 8) {
-                // "All" option (only visible if filtered)
-                if selectedGenre != nil {
-                    Button(action: {
-                        withAnimation { selectedGenre = nil }
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.gray)
-                            Text("Clear Filter")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
-                        }
+            if selectedGenre != nil {
+                Button(action: {
+                    withAnimation { selectedGenre = nil }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.gray)
+                        Text("Clear Filter")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.bottom, 4)
                 }
+                .padding(.bottom, 4)
+            }
 
-                ForEach(chartData) { item in
-                    Button(action: {
-                        withAnimation {
-                            if selectedGenre == item.name {
-                                selectedGenre = nil
-                            } else {
-                                selectedGenre = item.name
-                            }
+            ForEach(chartData) { item in
+                Button(action: {
+                    withAnimation {
+                        if selectedGenre == item.name {
+                            selectedGenre = nil
+                        } else {
+                            selectedGenre = item.name
                         }
-                    }) {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(item.color)
-                                .frame(width: 8, height: 8)
-                            
-                            Text(item.name)
-                                .font(useSmallFonts ? .caption : .subheadline)
-                                .foregroundStyle(selectedGenre == item.name ? .primary : .primary)
-                                .fontWeight(selectedGenre == item.name ? .bold : .regular)
-                            
-                            Spacer()
-                            
-                            Text("\(item.count)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle()) // Make full row tappable
-                        .opacity(selectedGenre == nil || selectedGenre == item.name ? 1.0 : 0.4)
                     }
-                    .buttonStyle(.plain)
+                }) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(item.color)
+                            .frame(width: 8, height: 8)
+                        
+                        Text(item.name)
+                            .font(.subheadline)
+                            .foregroundStyle(selectedGenre == item.name ? .primary : .primary)
+                            .fontWeight(selectedGenre == item.name ? .bold : .regular)
+                        
+                        Spacer()
+                        
+                        Text("\(item.count)")
+                            .font(.subheadline)
+                            .bold()
+                    }
+                    .contentShape(Rectangle())
+                    .opacity(selectedGenre == nil || selectedGenre == item.name ? 1.0 : 0.4)
                 }
+                .buttonStyle(.plain)
             }
-            .frame(maxWidth: .infinity)
         }
         .padding(16)
         .background(Color(uiColor: .secondarySystemGroupedBackground))

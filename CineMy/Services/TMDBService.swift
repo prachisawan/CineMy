@@ -1,8 +1,12 @@
 import Foundation
 
 final class TMDBService: Sendable {
-    // ⚠️ REPLACE THIS WITH YOUR ACTUAL API KEY
-    private let apiKey = "REDACTED_TMDB_KEY"
+    // Obfuscated API Key to prevent simple string extraction from compiled binary
+    private var apiKey: String {
+        let obfuscated: [UInt8] = [76, 123, 30, 27, 78, 18, 78, 25, 31, 18, 73, 27, 19, 76, 28, 19, 29, 25, 26, 24, 76, 28, 26, 19, 28, 26, 25, 73, 73, 78, 123, 25]
+        return String(bytes: obfuscated.map { $0 ^ 42 }, encoding: .utf8)!
+    }
+    
     private let baseURL = "https://api.themoviedb.org/3"
     
     enum MediaType: String {
@@ -333,63 +337,45 @@ final class TMDBService: Sendable {
         let sortedResults: [TMDBResult]
         
         if let query = searchQuery?.lowercased() {
-             // ... [SEARCH MODE LOGIC REMAINS UNCHANGED] ...
-             // (I am omitting the search logic block here to save tokens, assuming user just wants the Discover fix)
-             // Wait, the tool requires contiguous replacement. I must include the Search Mode block or use MultiReplace.
-             // I will use MultiReplace logic by replacing the whole block or just the signature + Else block.
-             
-             // SEARCH MODE: Exact Match Isolation Rule
-            
-            // 1. Identify Exact Matches (Case-Insensitive)
-            // We respect the 0-rating and vote count safety rules, but relax the 6.0 quality filter for exact matches
-            let exactMatches = uniqueResults.filter { item in
+            // Broad Quality Filter
+            let qualityResults = uniqueResults.filter { item in 
                 let title = (item.title ?? item.name ?? "").lowercased()
-                let rating = item.vote_average ?? 0.0
-                return title == query && rating > 0 && rating != 10.0 // Ensure no 0-rated garbage or spam 10.0
+                let rating = item.vote_average ?? 0
+                let votes = item.vote_count ?? 0
+                
+                // If it's an exact match, be lenient to avoid hiding things the user explicitly typed
+                if title == query {
+                    return rating > 0 && rating != 10.0
+                }
+                
+                // Otherwise, enforce strict quality to hide API spam
+                return rating > 0 && rating != 10.0 && votes >= 50
             }
             
-            if !exactMatches.isEmpty {
-                // RULE: If Exact Matches exist, SHOW ONLY THEM.
-                // Sub-Rule: If any exact match is High Quality (> 7.0), hide the junk (< 6.0).
-                let hasHighQuality = exactMatches.contains { ($0.vote_average ?? 0) > 7.0 }
+            // Smart Sort
+            sortedResults = qualityResults.sorted { first, second in
+                let title1 = (first.title ?? first.name ?? "").lowercased()
+                let title2 = (second.title ?? second.name ?? "").lowercased()
+                let votes1 = first.vote_count ?? 0
+                let votes2 = second.vote_count ?? 0
                 
-                let finalExactMatches: [TMDBResult]
-                if hasHighQuality {
-                    finalExactMatches = exactMatches.filter { ($0.vote_average ?? 0) >= 6.0 }
-                } else {
-                    finalExactMatches = exactMatches
-                }
+                let exact1 = (title1 == query)
+                let exact2 = (title2 == query)
                 
-                sortedResults = finalExactMatches.sorted { ($0.vote_count ?? 0) > ($1.vote_count ?? 0) }
-            } else {
-                // RULE: No Exact Match -> Show broad results but filter for quality
-                let qualityResults = uniqueResults.filter { item in 
-                     let rating = item.vote_average ?? 0
-                     let votes = item.vote_count ?? 0
-                     // Strict Roadmap Rule: >50 votes, not 0, not 10
-                     return rating > 0 && rating != 10.0 && votes >= 50
-                }
+                let starts1 = title1.hasPrefix(query)
+                let starts2 = title2.hasPrefix(query)
                 
-                sortedResults = qualityResults.sorted { first, second in
-                    let title1 = (first.title ?? first.name ?? "").lowercased()
-                    let title2 = (second.title ?? second.name ?? "").lowercased()
-                    let votes1 = first.vote_count ?? 0
-                    let votes2 = second.vote_count ?? 0
-                    
-                    // Priority 1: Starts With wins
-                    let starts1 = title1.hasPrefix(query)
-                    let starts2 = title2.hasPrefix(query)
-                    if starts1 && !starts2 { return true }
-                    if starts2 && !starts1 { return false }
-                    
-                    // Priority 2: Vote Count (Popularity) wins for tie-breaking
-                    if votes1 != votes2 {
-                        return votes1 > votes2
-                    }
-                    
-                    // Fallback: Rating
-                    return (first.vote_average ?? 0) > (second.vote_average ?? 0)
-                }
+                // Priority 1: Exact Matches
+                if exact1 != exact2 { return exact1 }
+                
+                // Priority 2: Starts With
+                if starts1 != starts2 { return starts1 }
+                
+                // Priority 3: Vote Count (Popularity)
+                if votes1 != votes2 { return votes1 > votes2 }
+                
+                // Fallback: Rating
+                return (first.vote_average ?? 0) > (second.vote_average ?? 0)
             }
         } else {
             // DISCOVER MODE

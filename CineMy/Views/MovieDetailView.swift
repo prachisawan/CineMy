@@ -17,16 +17,24 @@ struct MovieDetailView: View {
                     // Header Image with Trailer Overlay
                     if let path = item.posterPath {
                         ZStack(alignment: .center) {
+                            // Immersive Full-Width Poster
                             AsyncImage(url: URL(string: "https://image.tmdb.org/t/p/w500\(path)")) { image in
                                 image.resizable()
                                      .aspectRatio(contentMode: .fill)
                             } placeholder: {
-                                Rectangle().foregroundStyle(.gray.opacity(0.3))
-                                           .frame(height: 300)
+                                Rectangle().foregroundStyle(.gray.opacity(0.2))
                             }
-                            .frame(height: 300)
+                            .frame(maxWidth: .infinity)
+                            .aspectRatio(2/3, contentMode: .fit) // Locks to classic movie poster ratio, scaling height dynamically to fit device width flawlessly
                             .clipped()
                             
+                            // Smooth gradient fade to blend the bottom of the poster into the app background
+                            LinearGradient(
+                                colors: [.clear, .clear, Color(uiColor: .systemBackground)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+
                             // Trailer Play Button Overlay
                             if let trailerUrl = item.trailerUrl, let url = URL(string: trailerUrl) {
                                 Link(destination: url) {
@@ -34,7 +42,7 @@ struct MovieDetailView: View {
                                         Circle()
                                             .fill(.ultraThinMaterial)
                                             .frame(width: 60, height: 60)
-                                            .shadow(radius: 10)
+                                            .shadow(color: .black.opacity(0.5), radius: 10)
                                         
                                         Image(systemName: "play.fill")
                                             .font(.title)
@@ -42,6 +50,7 @@ struct MovieDetailView: View {
                                             .offset(x: 2) // Optical adjustment
                                     }
                                 }
+                                .padding(.bottom, 20)
                             }
                         }
                     }
@@ -111,23 +120,34 @@ struct MovieDetailView: View {
                             }
 
                             // Watch/Complete Button
+                            let isMovie = item.type == "movie"
+                            let showInProgress = item.isInProgress || (isMovie && item.watchedCount == 0)
+                            
                             VStack(spacing: 4) {
                                 Button(action: {
                                     ensureItemIsSaved()
                                     withAnimation {
-                                        if item.isInProgress {
+                                        if isMovie {
                                             item.isInProgress = false
                                             item.watchedCount += 1
                                             item.lastWatched = Date()
                                             Task { await syncAfterWatch() }
-                                        } else {
-                                            item.isInProgress = true
                                             if item.isWatchlist { item.isWatchlist = false }
+                                        } else {
+                                            if item.isInProgress {
+                                                item.isInProgress = false
+                                                item.watchedCount += 1
+                                                item.lastWatched = Date()
+                                                Task { await syncAfterWatch() }
+                                            } else {
+                                                item.isInProgress = true
+                                                if item.isWatchlist { item.isWatchlist = false }
+                                            }
                                         }
                                     }
                                 }) {
                                     VStack {
-                                        if item.isInProgress {
+                                        if showInProgress {
                                             Image(systemName: "checkmark")
                                                 .font(.system(size: 18, weight: .bold))
                                             Text("Mark as Watched")
@@ -147,8 +167,8 @@ struct MovieDetailView: View {
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 50)
                                     .padding(.vertical, 0)
-                                    .background(item.isInProgress ? Color.green.opacity(0.1) : (item.watchedCount > 0 ? Color.green : Color.blue))
-                                    .foregroundStyle(item.isInProgress ? .green : .white)
+                                    .background(showInProgress ? Color.green.opacity(0.1) : (item.watchedCount > 0 ? Color.green : Color.blue))
+                                    .foregroundStyle(showInProgress ? .green : .white)
                                     .cornerRadius(12)
                                 }
                                 
@@ -250,7 +270,8 @@ struct MovieDetailView: View {
                     .padding(.bottom, 50) // Bottom spacing
                 }
             }
-            .edgesIgnoringSafeArea(.top)
+            .ignoresSafeArea(edges: .top)
+            .toolbarBackground(.hidden, for: .navigationBar)
             
             // Toast Overlay
             if showToast {
