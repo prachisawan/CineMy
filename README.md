@@ -103,15 +103,19 @@ CineMy/
 
 2. **Configure TMDB API Key**
    
-   Open `CineMy/Services/TMDBService.swift` and replace the API key:
-   ```swift
-   private let apiKey = "YOUR_TMDB_API_KEY"
-   ```
+   For security, the API key is not checked into source control. You must create a configuration file:
+   - Create a folder named `Config` at the root of the project (if it doesn't exist).
+   - Inside `Config`, create a file named `Secrets.xcconfig`.
+   - Add your API key to this file:
+     ```text
+     TMDB_API_KEY = YOUR_TMDB_API_KEY_HERE
+     ```
+   *(Note: This file is already ignored by `.gitignore` to prevent accidental commits).*
 
 3. **Configure Firebase**
    - Create a project at [Firebase Console](https://console.firebase.google.com)
-   - Download `GoogleService-Info.plist` and add to the project
-   - Enable Realtime Database
+   - Download `GoogleService-Info.plist` and add it to the root of the project.
+   - Enable Firestore Database (used for anonymous friend syncing).
 
 4. **Build & Run**
    ```bash
