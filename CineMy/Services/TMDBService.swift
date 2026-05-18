@@ -3,11 +3,12 @@ import Foundation
 final class TMDBService: Sendable {
     // Read API Key securely from Info.plist (populated via Secrets.xcconfig)
     private var apiKey: String {
-        guard let key = Bundle.main.infoDictionary?["TMDB_API_KEY"] as? String, !key.isEmpty else {
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String, !key.isEmpty else {
             print("⚠️ WARNING: TMDB_API_KEY is missing from Info.plist or Secrets.xcconfig")
+            print("Available Info.plist keys: \\(Bundle.main.infoDictionary?.keys.map { $0 } ?? [])")
             return ""
         }
-        return key
+        return key.replacingOccurrences(of: "\\"", with: "")
     }
     
     private let baseURL = "https://api.themoviedb.org/3"
