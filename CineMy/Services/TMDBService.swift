@@ -1,10 +1,13 @@
 import Foundation
 
 final class TMDBService: Sendable {
-    // Obfuscated API Key to prevent simple string extraction from compiled binary
+    // Read API Key securely from Info.plist (populated via Secrets.xcconfig)
     private var apiKey: String {
-        let obfuscated: [UInt8] = [24, 28, 75, 30, 29, 72, 29, 78, 29, 18, 28, 30, 72, 79, 25, 25, 31, 29, 31, 28, 28, 28, 18, 24, 25, 76, 26, 73, 29, 78, 25, 78]
-        return String(bytes: obfuscated.map { $0 ^ 42 }, encoding: .utf8)!
+        guard let key = Bundle.main.infoDictionary?["TMDB_API_KEY"] as? String, !key.isEmpty else {
+            print("⚠️ WARNING: TMDB_API_KEY is missing from Info.plist or Secrets.xcconfig")
+            return ""
+        }
+        return key
     }
     
     private let baseURL = "https://api.themoviedb.org/3"
