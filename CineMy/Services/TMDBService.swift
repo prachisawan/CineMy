@@ -8,7 +8,7 @@ final class TMDBService: Sendable {
             print("Available Info.plist keys: \\(Bundle.main.infoDictionary?.keys.map { $0 } ?? [])")
             return ""
         }
-        return key.replacingOccurrences(of: "\\"", with: "")
+        return key.replacingOccurrences(of: "\"", with: "")
     }
     
     private let baseURL = "https://api.themoviedb.org/3"
